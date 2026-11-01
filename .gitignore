@@ -1,0 +1,10 @@
+.pio/
+.vscode/
+*.log
+.DS_Store
+
+# never commit real credentials
+src/secret_config.h
+
+# personal recordings/logs (add back deliberately if you want them public)
+data/
