@@ -115,6 +115,12 @@
                                            // a first-difference sharpness
                                            // measure which attenuates low
                                            // frequencies)
+#define ENV_HIGHPASS_HZ         150        // one-pole high-pass on the raw
+                                           // stream before the RMS: kills the
+                                           // 30-150 Hz structure-borne rumble
+                                           // floor (measured from the silent
+                                           // sessions) while drops (200-400
+                                           // Hz) pass untouched
 #define ENV_MIN_MARGIN          5          // floor margin above envelope
                                            // baseline. Measured from the
                                            // labelled sessions: the human-

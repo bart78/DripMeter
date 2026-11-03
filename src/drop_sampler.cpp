@@ -108,6 +108,10 @@ void DropSampler::run()
     int32_t  rmsSumSq = 0;
     uint16_t rmsFill  = 0;
     uint16_t winIdx   = 0;
+    // One-pole high-pass (rumble floor rejection, see ENV_HIGHPASS_HZ).
+    float    hpPrev    = 0.0f;
+    float    hpPrevOut = 0.0f;
+    float    hpA       = 0.0f;   // set once sps is known
 
     int32_t  envBase  = 0;              // EMA of the quiet envelope level
     int32_t  envNoise = 4;              // EMA of |env - envBase|
@@ -189,8 +193,20 @@ void DropSampler::run()
         ring[ringPos] = (int16_t)raw;
         ringPos = (ringPos + 1) & (kLen - 1);
 
+        // One-pole high-pass before the RMS (reject 30-150 Hz rumble).
+        float hp = 0.0f;
+        if (hpA > 0.0f)
+        {
+            const float cur = (float)(int16_t)raw;
+            hp = cur - hpPrev;
+            hpPrev = cur;
+            // recursive pole: hp += a*hpPrevOut
+            hp = hp + hpA * hpPrevOut;
+            hpPrevOut = hp;
+        }
+
         // Sliding AC-RMS amplitude envelope bookkeeping.
-        const int16_t r = (int16_t)raw;
+        const int16_t r = hpA > 0.0f ? (int16_t)hp : (int16_t)raw;
         if (rmsFill < ENV_RMS_WINDOW)
         {
             rmsSum   += r;
@@ -639,6 +655,14 @@ void DropSampler::run()
         if (now - spsStartMs >= 1000)
         {
             _sps.store(spsWindow, std::memory_order_relaxed);
+            if (spsWindow > 1000 && hpA == 0.0f)
+            {
+                // a = exp(-2*pi*fc/fs), clamped for stability
+                const float w = -6.2831853f * ENV_HIGHPASS_HZ / (float)spsWindow;
+                hpA = (w < -0.3f) ? 0.90f : (1.0f + w);
+                if (hpA < 0.80f) hpA = 0.80f;
+                if (hpA > 0.98f) hpA = 0.98f;
+            }
             spsWindow  = 0;
             spsStartMs = now;
         }
