@@ -234,6 +234,11 @@ void WebExport::onCal()
         "threshold = baseline + max(margin, noiseMult x noise) · "
         "<button id='pausebtn' onclick=\"paused=!paused;this.textContent=paused?'resume':'pause'\">"
         "pause</button> · <span id='calstat'>ready</span></p>"
+        "<canvas id='capcv' width='300' height='70' "
+        "style='width:100%%;max-width:320px;background:#0d1117;"
+        "border:1px solid #2c3644;touch-action:none'></canvas>"
+        "<p style='color:#8794a5;font-size:12px' id='caplabel'>"
+        "captured candidate (fills while recording)</p>"
         "<p><button id='autocalbtn' onclick=\"calApplied=false;fetch('/autocal')\">"
         "auto-calibrate (10s quiet + drops)</button></p>"
         "<p><button onclick=\"var b=this;fetch('/record').then(r=>r.json())"
@@ -334,6 +339,17 @@ void WebExport::onCal()
         "'template: LEARNED (avg '+j.tpl_avg+', last peak '+j.tpl_peak+')';"
         "else"
         "document.getElementById('tplline').textContent='template: none';"
+        "if(j.cap&&j.cap.length){var c2=document.getElementById('capcv'),"
+        "x2=c2.getContext('2d');var W2=c2.width,H2=c2.height,cm=1,i2;"
+        "for(i2=0;i2<j.cap.length;i2++){var a2=Math.abs(j.cap[i2]);if(a2>cm)cm=a2;}"
+        "x2.fillStyle='#0d1117';x2.fillRect(0,0,W2,H2);"
+        "x2.strokeStyle='#ffb02e';x2.beginPath();"
+        "for(i2=0;i2<j.cap.length;i2++){var yy=H2/2-(j.cap[i2]/cm)*(H2/2-4);"
+        "var xx=i2/j.cap.length*W2;"
+        "if(i2==0)x2.moveTo(xx,yy);else x2.lineTo(xx,yy);}"
+        "x2.stroke();"
+        "document.getElementById('caplabel').textContent="
+        "'candidate: peak '+j.learn_peak+(j.learn_armed?' (recording...)':'');}"
         "if(j.learn_armed)s.textContent='RECORDING - make drops now; "
         "loudest candidate peak '+j.learn_peak;"
         "else if(j.cal_phase==1)s.textContent='listening to environment (10s)...';"
@@ -775,6 +791,14 @@ void WebExport::onStream()
     js += _sampler.recordArmed() ? "true" : "false";
     js += ",\"learn_peak\":";
     js += String(_sampler.learnBestPeak());
+    js += ",\"cap\":[";
+    for (uint16_t i = 0; i < DropTemplate::kLen; ++i)
+    {
+        if (i)
+            js += ',';
+        js += String(_sampler.learnCapAt(i));
+    }
+    js += "]";
     js += ",\"tpl\":";
     js += _sampler.templateLearned() ? "true" : "false";
     js += ",\"tpl_avg\":";

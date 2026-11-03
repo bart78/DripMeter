@@ -129,7 +129,6 @@ void DropSampler::run()
     uint16_t recIdx    = 0;
     uint32_t recArmedMs = 0;
     int16_t  recBuf[kLen];
-    int16_t  bestBuf[kLen];              // loudest candidate of an arm window
     uint16_t bestPeak = 0;
 
     uint32_t lastHitMs  = 0;            // millis() of last accepted trigger
@@ -239,7 +238,7 @@ void DropSampler::run()
                     if (capPeak > bestPeak)
                     {
                         bestPeak = capPeak;
-                        memcpy(bestBuf, recBuf, sizeof(recBuf));
+                        memcpy(_learnCap, recBuf, sizeof(recBuf));
                         _learnBestPeak.store(capPeak, std::memory_order_relaxed);
                         DBG_PRINTF("[TPL] candidate peak %u kept\n", capPeak);
                     }
@@ -391,7 +390,7 @@ void DropSampler::run()
                         const bool noiseTarget =
                             _learnTarget.load(std::memory_order_relaxed) == 1;
                         DropTemplate &dst = noiseTarget ? _noiseTpl : _tpl;
-                        dst.addCapture(bestBuf, kLen,
+                        dst.addCapture(_learnCap, kLen,
                                        _sps.load() ? _sps.load() : 20000);
                         dst.save();
                         DBG_PRINTF("[TPL] learned best %s candidate (peak %u)\n",

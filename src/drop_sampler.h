@@ -87,6 +87,10 @@ public:
 
     bool recordArmed() const { return _recordArmed.load(std::memory_order_relaxed); }
     uint16_t learnBestPeak() const { return _learnBestPeak.load(std::memory_order_relaxed); }
+    int16_t learnCapAt(uint16_t i) const
+    {
+        return (i < DropTemplate::kLen) ? _learnCap[i] : 0;
+    }
 
     // Auto-calibration: measure 10 s of quiet, then ask for a few drops,
     // then auto-compute the margin (applied by the caller) and average the
@@ -149,6 +153,7 @@ private:
     std::atomic<uint8_t>  _matchMinRms{MATCH_MIN_RMS};
     std::atomic<bool>     _recordArmed{false};
     std::atomic<uint16_t> _learnBestPeak{0};
+    int16_t               _learnCap[DropTemplate::kLen] = {0};
 
     // Auto-calibration state (driven by the sampler task).
     std::atomic<uint8_t>  _calPhase{0};             // 0 idle / 1 quiet / 2 drop
