@@ -61,6 +61,8 @@ void WebExport::begin()
     _server.on("/clearlog", HTTP_GET, [this]() { onClearLog(); });
     _server.on("/autocal", HTTP_GET, [this]() { onAutoCal(); });
     _server.on("/caldump", HTTP_GET, [this]() { onCalDump(); });
+    _server.on("/tpl.bin", HTTP_POST, [this]() { onUploadTemplate(); });
+    _server.on("/noise.bin", HTTP_POST, [this]() { onUploadNoise(); });
     _server.on("/record", HTTP_GET, [this]() { onRecord(); });
     _server.on("/rec.wav", HTTP_GET, [this]() { onRecWav(); });
     _server.on("/stream.json", HTTP_GET, [this]() { onStream(); });
@@ -740,6 +742,52 @@ void WebExport::onRecWav()
     }
     rd.close();
     _server.client().stop();
+}
+
+// ---------------------------------------------------------------------------
+// POST /tpl.bin — upload a drop template built offline (tools/build_template.py
+// from a WAV + labels). The body is the raw template file; it is written to
+// flash and loaded. Same for /noise.bin with the noise template.
+// ---------------------------------------------------------------------------
+static bool receiveTemplate(WebServer &srv, const char *path)
+{
+    uint8_t buf[2048];
+    size_t total = 0;
+    fs::File f = LittleFS.open(path, "w");
+    if (!f)
+        return false;
+    while (srv.client().available())
+    {
+        const size_t n = srv.client().readBytes(buf, sizeof(buf));
+        if (n == 0)
+            break;
+        f.write(buf, n);
+        total += n;
+    }
+    f.close();
+    return total >= 100;    // sanity: template file is ~1 KB
+}
+
+void WebExport::onUploadTemplate()
+{
+    const bool ok = receiveTemplate(_server, "/template.bin");
+    _sampler.templateStore().load();
+    char j[96];
+    snprintf(j, sizeof(j), "{\"ok\":%d,\"learned\":%s}",
+             ok ? 1 : 0,
+             _sampler.templateLearned() ? "true" : "false");
+    _server.send(200, "application/json", j);
+}
+
+void WebExport::onUploadNoise()
+{
+    const bool ok = receiveTemplate(_server, "/noise.bin");
+    _sampler.noiseStore().load();
+    char j[96];
+    snprintf(j, sizeof(j), "{\"ok\":%d,\"learned\":%s}",
+             ok ? 1 : 0,
+             _sampler.noiseLearned() ? "true" : "false");
+    _server.send(200, "application/json", j);
 }
 
 // ---------------------------------------------------------------------------

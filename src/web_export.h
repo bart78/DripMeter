@@ -49,6 +49,8 @@ private:
     void onCalDump();
     void onRecord();
     void onRecWav();
+    void onUploadTemplate();
+    void onUploadNoise();
 
     // Shared helpers.
     void histogramSVG(String &out, uint8_t nowIdx);
