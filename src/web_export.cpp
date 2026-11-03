@@ -216,7 +216,7 @@ void WebExport::onCal()
                  _sampler.templateStore().avgCount(),
                  _sampler.templateStore().lastCapturePeak());
 
-    char html[9000];
+    char html[12000];
     snprintf(html, sizeof(html),
         "<!DOCTYPE html><html><head><title>DripMeter - calibration</title>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
