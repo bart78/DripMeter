@@ -78,6 +78,12 @@ public:
         _recordArmed.store(true, std::memory_order_relaxed);
     }
 
+    // Click-to-select: extract the 512-sample window that ended `msAgo`
+    // milliseconds ago from the rolling 30s arm buffer and learn it into
+    // the currently targeted template (drop or noise). Runs in the web
+    // task context.
+    bool pickTemplate(uint32_t msAgo);
+
     // Rolling WAV recorder (PSRAM ring of the last WAV_SECONDS of audio).
     bool     wavOK()   const { return _wavRing != nullptr; }
     uint32_t wavCap()  const { return _wavCap; }
@@ -178,4 +184,10 @@ private:
     uint32_t              _wavCap = 0;
     uint32_t              _wavPos = 0;
     std::atomic<uint32_t> _wavFill{0};
+
+    // Rolling 30s raw arm buffer (PSRAM) for click-to-select learning.
+    int16_t              *_armBuf = nullptr;
+    uint32_t              _armCap = 0;
+    uint32_t              _armPos = 0;
+    std::atomic<uint32_t> _armFill{0};
 };

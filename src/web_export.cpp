@@ -62,6 +62,7 @@ void WebExport::begin()
     _server.on("/autocal", HTTP_GET, [this]() { onAutoCal(); });
     _server.on("/caldump", HTTP_GET, [this]() { onCalDump(); });
     _server.on("/tpl.bin", HTTP_POST, [this]() { onUploadTemplate(); });
+    _server.on("/learnpick", HTTP_GET, [this]() { onLearnPick(); });
     _server.on("/noise.bin", HTTP_POST, [this]() { onUploadNoise(); });
     _server.on("/record", HTTP_GET, [this]() { onRecord(); });
     _server.on("/rec.wav", HTTP_GET, [this]() { onRecWav(); });
@@ -299,7 +300,7 @@ void WebExport::onCal()
 
         "<script>"
         "var paused=false,thrY=0,ymax=64,calApplied=false;"
-        "var lastData=[],lastBase=0,lastThr=0,lastMode='envelope';"
+        "var lastData=[],lastBase=0,lastThr=0,lastMode='envelope',spss=16000;"
         "var cv=document.getElementById('cv'),ctx=cv.getContext('2d');"
         "function draw(data,thr,base,isMatch){var W=cv.width,H=cv.height,m=0,i;"
         "var srt=data.slice().sort(function(a,b){return a-b;});"
@@ -332,7 +333,7 @@ void WebExport::onCal()
         "document.getElementById('env').textContent=j.env[j.env.length-1];"
         "document.getElementById('mat').textContent=j.match_score;"
         "document.getElementById('thr').textContent=j.thr;"
-        "lastMode=j.mode;"
+        "lastMode=j.mode;if(j.sps)spss=j.sps;"
         "var isMatch=(j.mode=='match'||j.mode=='both');"
         "if(!paused)draw(isMatch?j.match:j.env,isMatch?j.mthr:j.thr,j.base,isMatch);"
         "var s=document.getElementById('calstat');"
@@ -375,7 +376,11 @@ void WebExport::onCal()
         // --- drag the threshold line ---------------------------------------
         "var dragging=false;"
         "function toVal(y){return Math.max(2,Math.round((1-(y-20)/(cv.height-44))*ymax));}"
-        "cv.addEventListener('pointerdown',function(e){dragging=true;cv.setPointerCapture(e.pointerId);});"
+        "var downX=0,downY=0,didDrag=false;"
+        "cv.addEventListener('pointerdown',function(e){dragging=true;didDrag=false;"
+        "downX=e.clientX;downY=e.clientY;cv.setPointerCapture(e.pointerId);});"
+        "cv.addEventListener('pointermove',function(e){if(dragging&&"
+        "(Math.abs(e.clientX-downX)>6||Math.abs(e.clientY-downY)>6))didDrag=true;});"
         "cv.addEventListener('pointermove',function(e){"
         "var r=cv.getBoundingClientRect();var y=(e.clientY-r.top)*(cv.height/r.height);"
         "if(dragging){thrY=y;var v=toVal(y);"
@@ -392,8 +397,16 @@ void WebExport::onCal()
         "ctx.fillText('t='+ts.toFixed(1)+'s v='+lastData[i],x+4,16);}"
         "});"
         "cv.addEventListener('pointerup',function(e){if(!dragging)return;dragging=false;"
-        "var r=cv.getBoundingClientRect();var y=(e.clientY-r.top)*(cv.height/r.height);"
-        "var v=toVal(y);fetch('/set?'+(lastMode=='match'||lastMode=='both'?'matchthr':'margin')+'='+v+'&ajax=1');});"
+        "var r=cv.getBoundingClientRect();"
+        "if(didDrag){var y=(e.clientY-r.top)*(cv.height/r.height);var v=toVal(y);"
+        "fetch('/set?'+(lastMode=='match'||lastMode=='both'?'matchthr':'margin')"
+        "+'='+v+'&ajax=1');}"
+        "else{var x=(e.clientX-r.left)*(cv.width/r.width);var n=lastData.length,"
+        "x0=cv.width-n*0.625;var i2=Math.round((x-x0)/0.625);"
+        "if(i2>=0&&i2<n){var perPt=256000/(spss||16000);"
+        "var ago=Math.round((n-1-i2)*perPt);fetch('/learnpick?t='+ago);"
+        "document.getElementById('calstat').textContent="
+        "'picked @ '+(ago/1000).toFixed(1)+'s ago - learning...';}}});"
         // --- knobs auto-apply ----------------------------------------------
         "var t;"
         "function apply(){clearTimeout(t);t=setTimeout(function(){"
@@ -577,6 +590,19 @@ void WebExport::onLearnNoise()
         "noise template - press again for more captures.</p>"
         "</body></html>");
     _server.send(200, "text/html", html);
+}
+
+// ---------------------------------------------------------------------------
+// /learnpick?t=<msAgo> — click-to-select: learn the window the user picked
+// on the live chart into the currently targeted template.
+// ---------------------------------------------------------------------------
+void WebExport::onLearnPick()
+{
+    const long t = _server.arg("t").toInt();
+    const bool ok = (t > 0) && _sampler.pickTemplate((uint32_t)t);
+    char j[64];
+    snprintf(j, sizeof(j), "{\"ok\":%d}", ok ? 1 : 0);
+    _server.send(200, "application/json", j);
 }
 
 // ---------------------------------------------------------------------------

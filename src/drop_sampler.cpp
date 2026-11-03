@@ -39,6 +39,11 @@ void DropSampler::begin()
     // Rolling WAV recorder ring in PSRAM (~2.2 MB for 60 s @ ~18 kS/s).
     _wavCap = (uint32_t)WAV_SECONDS * 18000;
     _wavRing = (int16_t *)ps_malloc(_wavCap * sizeof(int16_t));
+
+    // 30s rolling arm buffer for click-to-select learning.
+    _armCap = 30 * 18000;
+    _armBuf = (int16_t *)ps_malloc(_armCap * sizeof(int16_t));
+    DBG_PRINTF("[WAV] arm buffer %s\n", _armBuf ? "ready" : "alloc failed");
     if (_wavRing)
         DBG_PRINTF("[WAV] recorder ring ready (%u s @ up to 18kS/s)\n",
                    (unsigned)WAV_SECONDS);
@@ -54,6 +59,46 @@ void DropSampler::begin()
         &_task,                 // handle (optional)
         SAMPLER_CORE);          // core 1, same core as the UI — the sampler
                                 // preempts rendering, never the reverse
+}
+
+bool DropSampler::pickTemplate(uint32_t msAgo)
+{
+    if (!_armBuf)
+        return false;
+    const uint32_t fill = _armFill.load(std::memory_order_relaxed);
+    if (fill < DropTemplate::kLen)
+        return false;
+    uint32_t sps = _sps.load(std::memory_order_relaxed);
+    if (sps < 2000)
+        sps = 16000;
+    uint32_t back = (uint32_t)((uint64_t)msAgo * sps / 1000);
+    if (back + DropTemplate::kLen > fill)
+        back = fill - DropTemplate::kLen;
+
+    // logical start of the filled region
+    const uint32_t start = (fill >= _armCap) ? _armPos : 0;
+    int16_t buf[DropTemplate::kLen];
+    for (uint16_t j = 0; j < DropTemplate::kLen; ++j)
+        buf[j] = _armBuf[(start + back + j) % _armCap];
+
+    DropTemplate &dst = (_learnTarget.load(std::memory_order_relaxed) == 1)
+                            ? _noiseTpl
+                            : _tpl;
+    dst.addCapture(buf, DropTemplate::kLen, sps);
+    dst.save();
+
+    // mirror into the scope display
+    uint16_t capPeak = 0;
+    for (uint16_t j = 0; j < DropTemplate::kLen; ++j)
+    {
+        const int16_t v = buf[j];
+        const uint16_t a = v < 0 ? (uint16_t)-v : (uint16_t)v;
+        if (a > capPeak)
+            capPeak = a;
+        _learnCap[j] = v;
+    }
+    _learnBestPeak.store(capPeak, std::memory_order_relaxed);
+    return true;
 }
 
 int16_t DropSampler::wavRingAt(uint32_t i) const
@@ -187,6 +232,15 @@ void DropSampler::run()
             uint32_t fill = _wavFill.load(std::memory_order_relaxed);
             if (fill < _wavCap)
                 _wavFill.store(fill + 1, std::memory_order_relaxed);
+        }
+        if (_armBuf)
+        {
+            _armBuf[_armPos] = (int16_t)raw;
+            if (++_armPos >= _armCap)
+                _armPos = 0;
+            uint32_t af = _armFill.load(std::memory_order_relaxed);
+            if (af < _armCap)
+                _armFill.store(af + 1, std::memory_order_relaxed);
         }
 
         // Rolling history (also consumed by the /learn capture).

@@ -51,6 +51,7 @@ private:
     void onRecWav();
     void onUploadTemplate();
     void onUploadNoise();
+    void onLearnPick();
 
     // Shared helpers.
     void histogramSVG(String &out, uint8_t nowIdx);
