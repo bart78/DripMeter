@@ -101,6 +101,28 @@ bool DropSampler::pickTemplate(uint32_t msAgo)
     return true;
 }
 
+void DropSampler::cancelLearn()
+{
+    _recordArmed.store(false, std::memory_order_relaxed);
+    _learnBestPeak.store(0, std::memory_order_relaxed);
+    memset(_learnCap, 0, sizeof(_learnCap));
+}
+
+int16_t DropSampler::rawScopeAt(uint16_t i) const
+{
+    if (!_armBuf)
+        return 0;
+    const uint32_t fill = _armFill.load(std::memory_order_relaxed);
+    const uint32_t span = (uint32_t)_sps.load(std::memory_order_relaxed)
+                              ? _sps.load(std::memory_order_relaxed)
+                              : 16000;
+    if (fill < 512)
+        return 0;
+    const uint32_t start = (fill >= _armCap) ? _armPos : 0;
+    const uint32_t back = fill < span ? 0 : fill - span;
+    return _armBuf[(start + back + ((uint64_t)i * span / 512)) % _armCap];
+}
+
 int16_t DropSampler::wavRingAt(uint32_t i) const
 {
     const uint32_t fill = _wavFill.load(std::memory_order_relaxed);

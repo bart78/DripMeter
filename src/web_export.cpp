@@ -63,9 +63,25 @@ void WebExport::begin()
     _server.on("/caldump", HTTP_GET, [this]() { onCalDump(); });
     _server.on("/tpl.bin", HTTP_POST, [this]() { onUploadTemplate(); });
     _server.on("/learnpick", HTTP_GET, [this]() { onLearnPick(); });
+    _server.on("/learncancel", HTTP_GET, [this]() {
+        _sampler.cancelLearn();
+        _server.send(200, "application/json", "{\"ok\":1}");
+    });
     _server.on("/noise.bin", HTTP_POST, [this]() { onUploadNoise(); });
     _server.on("/record", HTTP_GET, [this]() { onRecord(); });
     _server.on("/rec.wav", HTTP_GET, [this]() { onRecWav(); });
+    _server.on("/bootlog.csv", HTTP_GET, [this]() {
+        fs::File rd = LittleFS.open("/bootlog.csv", "r");
+        if (!rd) { _server.send(404, "text/plain", "no boot log yet"); return; }
+        _server.setContentLength(rd.size());
+        _server.sendHeader("Content-Type", "text/csv");
+        _server.sendHeader("Connection", "close");
+        _server.send(200, "text/csv", "");
+        uint8_t b2[1024];
+        while (rd.available()) { size_t n = rd.read(b2, sizeof(b2)); _server.client().write(b2, n); }
+        rd.close();
+        _server.client().stop();
+    });
     _server.on("/stream.json", HTTP_GET, [this]() { onStream(); });
     _server.onNotFound([this]() {
         _server.send(404, "text/plain",
@@ -237,11 +253,13 @@ void WebExport::onCal()
         "threshold = baseline + max(margin, noiseMult x noise) · "
         "<button id='pausebtn' onclick=\"paused=!paused;this.textContent=paused?'resume':'pause'\">"
         "pause</button> · <span id='calstat'>ready</span></p>"
+        "<p style='margin:8px 0 2px'><b>scope</b> <span style='color:#8794a5'>"
+        "- live signal; shows the captured candidate while recording</span></p>"
         "<canvas id='capcv' width='300' height='70' "
         "style='width:100%%;max-width:320px;background:#0d1117;"
         "border:1px solid #2c3644;touch-action:none'></canvas>"
-        "<p style='color:#8794a5;font-size:12px' id='caplabel'>"
-        "captured candidate (fills while recording)</p>"
+        "<p style='color:#8794a5;font-size:12px;margin-top:2px' id='caplabel'>"
+        "live signal (1s)</p>"
         "<p><button id='autocalbtn' onclick=\"calApplied=false;fetch('/autocal')\">"
         "auto-calibrate (10s quiet + drops)</button></p>"
         "<p><button onclick=\"var b=this;fetch('/record').then(r=>r.json())"
@@ -840,6 +858,12 @@ void WebExport::onStream()
             js += ',';
         const int32_t idx = (int32_t)cnt - (int32_t)DropSampler::kEnvHist + i;
         js += String(idx >= 0 ? _sampler.matchHistAt((uint32_t)idx) : 0);
+    }
+    js += "],\"rawbuf\":[";
+    for (uint16_t i = 0; i < 512; ++i)
+    {
+        if (i) js += ',';
+        js += String(_sampler.rawScopeAt(i));
     }
     js += "],\"raw\":";
     js += String(_sampler.rawADC());

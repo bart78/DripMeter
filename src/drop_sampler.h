@@ -84,6 +84,13 @@ public:
     // task context.
     bool pickTemplate(uint32_t msAgo);
 
+    // Cancel a pending /learn or /learnnoise arm: nothing is learned.
+    void cancelLearn();
+
+    // Decimated 512-point view of the last ~1s of raw signal (for the
+    // calibration scope).
+    int16_t rawScopeAt(uint16_t i) const;
+
     // Rolling WAV recorder (PSRAM ring of the last WAV_SECONDS of audio).
     bool     wavOK()   const { return _wavRing != nullptr; }
     uint32_t wavCap()  const { return _wavCap; }

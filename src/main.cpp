@@ -15,6 +15,8 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include "esp_task_wdt.h"
+#include "esp_system.h"
+#include <Preferences.h>
 #include <atomic>
 
 #include "config.h"
@@ -129,6 +131,45 @@ void setup()
     // (LittleFS first-format / mount recovery takes 5-15s). We monitor
     // liveness ourselves via loop_ms_ago in /status.json instead.
     esp_task_wdt_deinit();
+
+    // Boot diary: one line per boot with reset reason + previous run length
+    // (from the NVS heartbeat), so reboots can be diagnosed after the fact.
+    {
+        const char *reason = "other";
+        switch (esp_reset_reason())
+        {
+        case ESP_RST_POWERON:  reason = "poweron"; break;
+        case ESP_RST_SW:       reason = "sw"; break;
+        case ESP_RST_PANIC:    reason = "panic"; break;
+        case ESP_RST_BROWNOUT: reason = "brownout"; break;
+        case ESP_RST_WDT:      reason = "wdt"; break;
+        case ESP_RST_DEEPSLEEP: reason = "deepsleep"; break;
+        case ESP_RST_USB:      reason = "usb"; break;
+        default: break;
+        }
+        uint32_t prev = 0;
+        {
+            Preferences hp;
+            if (hp.begin("hb", true))
+            {
+                const uint32_t last = hp.getULong("beat", 0);
+                if (last)
+                    prev = (uint32_t)time(nullptr) > last ? (uint32_t)time(nullptr) - last : 0;
+                hp.end();
+            }
+        }
+        if (LittleFS.begin(false))
+        {
+            fs::File f = LittleFS.open("/bootlog.csv", FILE_APPEND);
+            if (f)
+            {
+                f.printf("%ld,%s,prev_run_s=%lu\n",
+                         (long)time(nullptr), reason, (unsigned long)prev);
+                f.close();
+            }
+            LittleFS.end();
+        }
+    }
 
     Serial.begin(115200);
     {
@@ -258,6 +299,14 @@ void loop()
         if (millis() - lastBeat >= 5000)
         {
             lastBeat = millis();
+            {
+                Preferences hp;
+                if (hp.begin("hb", false))
+                {
+                    hp.putULong("beat", (uint32_t)time(nullptr));
+                    hp.end();
+                }
+            }
             DBG_PRINTF("[ALIVE] up=%lus heap=%u raw=%u env=%u thr=%u drops=%lu\n",
                        (unsigned long)(millis() / 1000),
                        ESP.getFreeHeap(),
