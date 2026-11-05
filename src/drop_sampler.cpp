@@ -477,7 +477,9 @@ void DropSampler::run()
                 }
                 if (now - recArmedMs > RECORD_ARM_TIMEOUT_MS)
                 {
-                    if (bestPeak >= LEARN_MIN_PEAK)
+                    if (bestPeak >= ((_learnTarget.load(std::memory_order_relaxed) == 1)
+                                          ? 0               // noise: accept anything
+                                          : LEARN_MIN_PEAK)) // drops: real signal only
                     {
                         const bool noiseTarget =
                             _learnTarget.load(std::memory_order_relaxed) == 1;
@@ -495,7 +497,10 @@ void DropSampler::run()
                     _recordArmed.store(false, std::memory_order_relaxed);
                     recArmedMs = 0;
                 }
-                else if (!recording && env > LEARN_MIN_ENV)
+                else if (!recording &&
+                         ((_learnTarget.load(std::memory_order_relaxed) == 1)
+                              ? true                 // noise: capture always
+                              : env > LEARN_MIN_ENV)) // drops: need a signal
                 {
                     // Onset: seed the buffer with 128 pre-onset samples from
                     // the ring, then fill the rest live (above).
