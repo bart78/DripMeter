@@ -361,7 +361,7 @@ void WebExport::onCal()
         "'template: LEARNED (avg '+j.tpl_avg+', last peak '+j.tpl_peak+')';"
         "else"
         "document.getElementById('tplline').textContent='template: none';"
-        "if(j.cap&&j.cap.length){var c2=document.getElementById('capcv'),"
+        "if(j.learn_peak>0&&j.cap&&j.cap.length){var c2=document.getElementById('capcv'),"
         "x2=c2.getContext('2d');var W2=c2.width,H2=c2.height,cm=1,i2;"
         "for(i2=0;i2<j.cap.length;i2++){var a2=Math.abs(j.cap[i2]);if(a2>cm)cm=a2;}"
         "x2.fillStyle='#0d1117';x2.fillRect(0,0,W2,H2);"
