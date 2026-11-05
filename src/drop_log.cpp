@@ -26,6 +26,33 @@ bool DropLog::begin()
         return false;
     }
 
+    // Torn-write guard: if the file does not end with a newline, the last
+    // append was interrupted by a power loss. Quarantine it and start a
+    // fresh log instead of parsing garbage forever.
+    if (_size > 0)
+    {
+        bool torn = false;
+        fs::File chk = LittleFS.open(LOG_PATH, "r");
+        if (chk)
+        {
+            chk.seek(_size - 1);
+            uint8_t last = 0;
+            if (chk.read(&last, 1) == 1 && last != '\n')
+                torn = true;
+            chk.close();
+        }
+        if (torn)
+        {
+            _file.close();
+            _open = false;
+            char bad[40];
+            snprintf(bad, sizeof(bad), "/drops_bad_%ld.csv", (long)time(nullptr));
+            LittleFS.rename(LOG_PATH, bad);
+            Serial.printf("[FS] quarantined torn log as %s\n", bad);
+            reopen();
+        }
+    }
+
     // Fresh file -> write the CSV header line first.
     if (_size == 0)
     {
