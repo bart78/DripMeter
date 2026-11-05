@@ -5,6 +5,7 @@
 #include "time_service.h"
 #include <sys/time.h>
 #include <stdio.h>
+#include <math.h>
 #include <stdlib.h>
 
 // ---------------------------------------------------------------------------
@@ -145,12 +146,14 @@ uint32_t DropLog::rebuildToday(Histogram &h, const struct tm &today)
         if (comma2 <= comma1)
             continue;
 
-        // Epoch column holds decimal seconds.
+        // Epoch column holds decimal seconds. Validate defensively: a
+        // torn write can leave a garbage final line (NaN/huge epochs).
         const String epochStr = line.substring(comma1 + 1, comma2);
-        const time_t t = (time_t)atof(epochStr.c_str());
-        if (t < TIME_VALID_EPOCH)
-            continue;                       // recorded before the first sync
+        const double ev = atof(epochStr.c_str());
+        if (!isfinite(ev) || ev < TIME_VALID_EPOCH || ev > 4.1e9)
+            continue;                       // corrupt or pre-sync: skip
 
+        const time_t t = (time_t)ev;
         struct tm tmv;
         localtime_r(&t, &tmv);
         if (h.sameDate(tmv))

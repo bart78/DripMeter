@@ -14,6 +14,7 @@
 // ============================================================================
 #include <Arduino.h>
 #include <WiFi.h>
+#include "esp_task_wdt.h"
 #include <atomic>
 
 #include "config.h"
@@ -124,6 +125,11 @@ static void setStage(const char *s)
 // ---------------------------------------------------------------------------
 void setup()
 {
+    // The default 5s task watchdog aborts during long one-time boot work
+    // (LittleFS first-format / mount recovery takes 5-15s). We monitor
+    // liveness ourselves via loop_ms_ago in /status.json instead.
+    esp_task_wdt_deinit();
+
     Serial.begin(115200);
     {
         // Console = USB-Serial-JTAG (HWCDC). Wait briefly for a host to
