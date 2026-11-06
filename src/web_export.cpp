@@ -889,6 +889,132 @@ void WebExport::onRoot()
             "<button type='button' class='btn btn-danger' id='btn-clear' style='margin-inline-start:auto'>Clear Log</button>"
             "</div></section>";
 
+    // --- Live Signal Scope Card (Always visible) + Collapsible Tuning ------
+    page += "<section class='card' style='margin-block-start:0.55rem' aria-label='Live Signal Scope'>"
+            "<div class='sec-head'>"
+            "<h2>Live Signal Scope (5.2s)</h2>"
+            "<div style='display:flex;gap:0.4rem;align-items:center'>"
+            "<span id='save-badge' class='save-status' aria-live='polite'></span>"
+            "<button type='button' class='btn' id='btn-pause' style='min-height:28px;padding-inline:0.55rem;font-size:0.75rem'>Freeze Scope</button>"
+            "</div></div>"
+            "<div class='scope-wrap'>"
+            "<canvas id='scope-cv' width='760' height='165'></canvas>"
+            "<div class='scope-bar'>"
+            "<div class='legend'>"
+            "<span><i class='dot' style='background:#38bdf8'></i>Env</span>"
+            "<span><i class='dot' style='background:#f43f5e'></i><span id='thr-legend'>Thr (locked)</span></span>"
+            "<span><i class='dot' style='background:#64748b'></i>Base</span>"
+            "<span><i class='dot' style='background:#22c55e'></i>Capture</span>"
+            "<span><i class='dot' style='background:#f59e0b'></i>Holdoff</span>"
+            "</div></div></div>"
+
+            "<details class='tuning-drawer' id='tuning-drawer'>"
+            "<summary>Detection Tuning Knobs</summary>"
+            "<div class='tuning-body'>"
+            "<form id='tune-form' action='/set' method='GET'>"
+            "<fieldset class='knob-group'>"
+            "<legend>1. Amplitude Sensitivity — What counts as a drop?</legend>"
+            "<div class='knob-grid'>";
+
+    snprintf(buf, sizeof(buf),
+        "<div class='knob-card' data-focus-knob='margin'>"
+        "<div class='knob-top'>"
+        "<label for='in-margin'>Trigger Margin</label>"
+        "<span class='knob-badge'><span id='lbl-margin'>%u</span> raw</span>"
+        "</div>"
+        "<div class='knob-controls'>"
+        "<input type='range' id='rng-margin' min='5' max='120' value='%u' aria-label='Trigger Margin slider'>"
+        "<input type='number' id='in-margin' name='margin' min='5' max='500' value='%u' required aria-describedby='desc-margin'>"
+        "</div>"
+        "<p class='knob-desc' id='desc-margin'>"
+        "Minimum height above the quiet baseline required to trigger a drop. "
+        "With the powered piezo, idle noise is 0–2 and real drops hit 20–46 (15 is ideal)."
+        "</p></div>"
+
+        "<div class='knob-card' data-focus-knob='noisemult'>"
+        "<div class='knob-top'>"
+        "<label for='in-nmult'>Ambient Noise Guard</label>"
+        "<span class='knob-badge'><span id='lbl-nmult'>%u</span>&times; noise</span>"
+        "</div>"
+        "<div class='knob-controls'>"
+        "<input type='range' id='rng-nmult' min='0' max='12' value='%u' aria-label='Ambient Noise Guard slider'>"
+        "<input type='number' id='in-nmult' name='noisemult' min='0' max='20' value='%u' required aria-describedby='desc-nmult'>"
+        "</div>"
+        "<p class='knob-desc' id='desc-nmult'>"
+        "Automatically lifts the threshold during sustained room noise (appliances, footsteps), "
+        "capped at +1&times; Margin so it never runs away."
+        "</p></div>"
+        "</div></fieldset>",
+        (unsigned)_sampler.margin(),
+        (unsigned)(_sampler.margin() > 120 ? 120 : _sampler.margin()),
+        (unsigned)_sampler.margin(),
+        (unsigned)_sampler.noiseMult(),
+        (unsigned)(_sampler.noiseMult() > 12 ? 12 : _sampler.noiseMult()),
+        (unsigned)_sampler.noiseMult());
+    page += buf;
+
+    page += "<fieldset class='knob-group'>"
+            "<legend>2. Timing &amp; Anti-Double-Count — Every drop counted once</legend>"
+            "<div class='knob-grid'>";
+
+    snprintf(buf, sizeof(buf),
+        "<div class='knob-card' data-focus-knob='captwin'>"
+        "<div class='knob-top'>"
+        "<label for='in-cap'>Peak Capture Window</label>"
+        "<span class='knob-badge'><span id='lbl-cap'>%u</span> ms</span>"
+        "</div>"
+        "<div class='knob-controls'>"
+        "<input type='range' id='rng-cap' min='20' max='200' step='5' value='%u' aria-label='Peak Capture Window slider'>"
+        "<input type='number' id='in-cap' name='captwin' min='20' max='300' value='%u' required aria-describedby='desc-cap'>"
+        "</div>"
+        "<p class='knob-desc' id='desc-cap'>"
+        "Green zone after trigger onset where the detector tracks the drop's highest PeakADC and EnvPeak (60 ms catches the full impact)."
+        "</p></div>"
+
+        "<div class='knob-card' data-focus-knob='release'>"
+        "<div class='knob-top'>"
+        "<label for='in-rel'>Ring-Tail Release</label>"
+        "<span class='knob-badge'><span id='lbl-rel'>%u</span> ms</span>"
+        "</div>"
+        "<div class='knob-controls'>"
+        "<input type='range' id='rng-rel' min='40' max='500' step='10' value='%u' aria-label='Ring-Tail Release slider'>"
+        "<input type='number' id='in-rel' name='release' min='40' max='1000' value='%u' required aria-describedby='desc-rel'>"
+        "</div>"
+        "<p class='knob-desc' id='desc-rel'>"
+        "Amber quiet-holdoff after capture: the signal must stay below threshold for this long before re-arming, swallowing tub vibrations and splashes."
+        "</p></div>",
+        (unsigned)_sampler.captureWindowMs(),
+        (unsigned)(_sampler.captureWindowMs() > 200 ? 200 : _sampler.captureWindowMs()),
+        (unsigned)_sampler.captureWindowMs(),
+        (unsigned)_sampler.releaseMs(),
+        (unsigned)(_sampler.releaseMs() > 500 ? 500 : _sampler.releaseMs()),
+        (unsigned)_sampler.releaseMs());
+    page += buf;
+
+    snprintf(buf, sizeof(buf),
+        "<div class='knob-card' data-focus-knob='refract'>"
+        "<div class='knob-top'>"
+        "<label for='in-refr'>Minimum Drop Spacing (Refractory)</label>"
+        "<span class='knob-badge'><span id='lbl-refr'>%u</span> ms</span>"
+        "</div>"
+        "<div class='knob-controls'>"
+        "<input type='range' id='rng-refr' min='80' max='1000' step='10' value='%u' aria-label='Minimum Drop Spacing slider'>"
+        "<input type='number' id='in-refr' name='refract' min='80' max='2000' value='%u' required aria-describedby='desc-refr'>"
+        "</div>"
+        "<p class='knob-desc' id='desc-refr'>"
+        "Hard minimum onset-to-onset time between two drops. At 200 ms, rapid bursts up to 5 drops/sec are tracked without merging."
+        "</p></div>"
+        "</div></fieldset>"
+        "<div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem'>"
+        "<span class='kpi-sub'>Changes apply automatically and persist across reboots.</span>"
+        "<button type='button' class='btn' id='btn-reset'>Reset Tuning to Defaults</button>"
+        "</div>"
+        "</form></div></details></section>",
+        (unsigned)_sampler.refractoryMs(),
+        (unsigned)(_sampler.refractoryMs() > 1000 ? 1000 : _sampler.refractoryMs()),
+        (unsigned)_sampler.refractoryMs());
+    page += buf;
+
     // --- Collapsible Pattern Baseline & Targeted Event Logger Drawer -------
     page += "<details class='tuning-drawer pat-drawer' id='pattern-drawer'>"
             "<summary>Pattern Baseline &amp; Targeted Event Logger</summary>"
@@ -1019,134 +1145,8 @@ void WebExport::onRoot()
         "<div style='margin-block-start:0.55rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap'>"
         "<span class='kpi-sub'>Tip: You can enter any drop count (visual count of 1 burst, or a multi-hour catch) + net grams.</span>"
         "<span id='cal-msg' class='save-status' aria-live='polite'></span>"
-        "</div></fieldset></div></details>",
+        "</div></fieldset></div></details></main>",
         uldUl);
-    page += buf;
-
-    // --- Live Signal Scope Card (Always visible) + Collapsible Tuning ------
-    page += "<section class='card' style='margin-block-start:0.55rem' aria-label='Live Signal Scope'>"
-            "<div class='sec-head'>"
-            "<h2>Live Signal Scope (5.2s)</h2>"
-            "<div style='display:flex;gap:0.4rem;align-items:center'>"
-            "<span id='save-badge' class='save-status' aria-live='polite'></span>"
-            "<button type='button' class='btn' id='btn-pause' style='min-height:28px;padding-inline:0.55rem;font-size:0.75rem'>Freeze Scope</button>"
-            "</div></div>"
-            "<div class='scope-wrap'>"
-            "<canvas id='scope-cv' width='760' height='165'></canvas>"
-            "<div class='scope-bar'>"
-            "<div class='legend'>"
-            "<span><i class='dot' style='background:#38bdf8'></i>Env</span>"
-            "<span><i class='dot' style='background:#f43f5e'></i><span id='thr-legend'>Thr (locked)</span></span>"
-            "<span><i class='dot' style='background:#64748b'></i>Base</span>"
-            "<span><i class='dot' style='background:#22c55e'></i>Capture</span>"
-            "<span><i class='dot' style='background:#f59e0b'></i>Holdoff</span>"
-            "</div></div></div>"
-
-            "<details class='tuning-drawer' id='tuning-drawer'>"
-            "<summary>Detection Tuning Knobs</summary>"
-            "<div class='tuning-body'>"
-            "<form id='tune-form' action='/set' method='GET'>"
-            "<fieldset class='knob-group'>"
-            "<legend>1. Amplitude Sensitivity — What counts as a drop?</legend>"
-            "<div class='knob-grid'>";
-
-    snprintf(buf, sizeof(buf),
-        "<div class='knob-card' data-focus-knob='margin'>"
-        "<div class='knob-top'>"
-        "<label for='in-margin'>Trigger Margin</label>"
-        "<span class='knob-badge'><span id='lbl-margin'>%u</span> raw</span>"
-        "</div>"
-        "<div class='knob-controls'>"
-        "<input type='range' id='rng-margin' min='5' max='120' value='%u' aria-label='Trigger Margin slider'>"
-        "<input type='number' id='in-margin' name='margin' min='5' max='500' value='%u' required aria-describedby='desc-margin'>"
-        "</div>"
-        "<p class='knob-desc' id='desc-margin'>"
-        "Minimum height above the quiet baseline required to trigger a drop. "
-        "With the powered piezo, idle noise is 0–2 and real drops hit 20–46 (15 is ideal)."
-        "</p></div>"
-
-        "<div class='knob-card' data-focus-knob='noisemult'>"
-        "<div class='knob-top'>"
-        "<label for='in-nmult'>Ambient Noise Guard</label>"
-        "<span class='knob-badge'><span id='lbl-nmult'>%u</span>&times; noise</span>"
-        "</div>"
-        "<div class='knob-controls'>"
-        "<input type='range' id='rng-nmult' min='0' max='12' value='%u' aria-label='Ambient Noise Guard slider'>"
-        "<input type='number' id='in-nmult' name='noisemult' min='0' max='20' value='%u' required aria-describedby='desc-nmult'>"
-        "</div>"
-        "<p class='knob-desc' id='desc-nmult'>"
-        "Automatically lifts the threshold during sustained room noise (appliances, footsteps), "
-        "capped at +1&times; Margin so it never runs away."
-        "</p></div>"
-        "</div></fieldset>",
-        (unsigned)_sampler.margin(),
-        (unsigned)(_sampler.margin() > 120 ? 120 : _sampler.margin()),
-        (unsigned)_sampler.margin(),
-        (unsigned)_sampler.noiseMult(),
-        (unsigned)(_sampler.noiseMult() > 12 ? 12 : _sampler.noiseMult()),
-        (unsigned)_sampler.noiseMult());
-    page += buf;
-
-    page += "<fieldset class='knob-group'>"
-            "<legend>2. Timing &amp; Anti-Double-Count — Every drop counted once</legend>"
-            "<div class='knob-grid'>";
-
-    snprintf(buf, sizeof(buf),
-        "<div class='knob-card' data-focus-knob='captwin'>"
-        "<div class='knob-top'>"
-        "<label for='in-cap'>Peak Capture Window</label>"
-        "<span class='knob-badge'><span id='lbl-cap'>%u</span> ms</span>"
-        "</div>"
-        "<div class='knob-controls'>"
-        "<input type='range' id='rng-cap' min='20' max='200' step='5' value='%u' aria-label='Peak Capture Window slider'>"
-        "<input type='number' id='in-cap' name='captwin' min='20' max='300' value='%u' required aria-describedby='desc-cap'>"
-        "</div>"
-        "<p class='knob-desc' id='desc-cap'>"
-        "Green zone after trigger onset where the detector tracks the drop's highest PeakADC and EnvPeak (60 ms catches the full impact)."
-        "</p></div>"
-
-        "<div class='knob-card' data-focus-knob='release'>"
-        "<div class='knob-top'>"
-        "<label for='in-rel'>Ring-Tail Release</label>"
-        "<span class='knob-badge'><span id='lbl-rel'>%u</span> ms</span>"
-        "</div>"
-        "<div class='knob-controls'>"
-        "<input type='range' id='rng-rel' min='40' max='500' step='10' value='%u' aria-label='Ring-Tail Release slider'>"
-        "<input type='number' id='in-rel' name='release' min='40' max='1000' value='%u' required aria-describedby='desc-rel'>"
-        "</div>"
-        "<p class='knob-desc' id='desc-rel'>"
-        "Amber quiet-holdoff after capture: the signal must stay below threshold for this long before re-arming, swallowing tub vibrations and splashes."
-        "</p></div>",
-        (unsigned)_sampler.captureWindowMs(),
-        (unsigned)(_sampler.captureWindowMs() > 200 ? 200 : _sampler.captureWindowMs()),
-        (unsigned)_sampler.captureWindowMs(),
-        (unsigned)_sampler.releaseMs(),
-        (unsigned)(_sampler.releaseMs() > 500 ? 500 : _sampler.releaseMs()),
-        (unsigned)_sampler.releaseMs());
-    page += buf;
-
-    snprintf(buf, sizeof(buf),
-        "<div class='knob-card' data-focus-knob='refract'>"
-        "<div class='knob-top'>"
-        "<label for='in-refr'>Minimum Drop Spacing (Refractory)</label>"
-        "<span class='knob-badge'><span id='lbl-refr'>%u</span> ms</span>"
-        "</div>"
-        "<div class='knob-controls'>"
-        "<input type='range' id='rng-refr' min='80' max='1000' step='10' value='%u' aria-label='Minimum Drop Spacing slider'>"
-        "<input type='number' id='in-refr' name='refract' min='80' max='2000' value='%u' required aria-describedby='desc-refr'>"
-        "</div>"
-        "<p class='knob-desc' id='desc-refr'>"
-        "Hard minimum onset-to-onset time between two drops. At 200 ms, rapid bursts up to 5 drops/sec are tracked without merging."
-        "</p></div>"
-        "</div></fieldset>"
-        "<div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem'>"
-        "<span class='kpi-sub'>Changes apply automatically and persist across reboots.</span>"
-        "<button type='button' class='btn' id='btn-reset'>Reset Tuning to Defaults</button>"
-        "</div>"
-        "</form></div></details></section></main>",
-        (unsigned)_sampler.refractoryMs(),
-        (unsigned)(_sampler.refractoryMs() > 1000 ? 1000 : _sampler.refractoryMs()),
-        (unsigned)_sampler.refractoryMs());
     page += buf;
 
     // --- Client-side interactive script (no inline handlers) ---------------
