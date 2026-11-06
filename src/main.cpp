@@ -187,7 +187,8 @@ void setup()
     Tuning::load(gSampler);
     gLog.appendSettings(gSampler.margin(), gSampler.noiseMult(),
                         gSampler.refractoryMs(), gSampler.releaseMs(),
-                        gSampler.captureWindowMs());
+                        gSampler.captureWindowMs(),
+                        gSampler.qtyEnabled(), gSampler.ulPerDropTenths());
 
     // --- 6. Wi-Fi -------------------------------------------------------------
     WiFi.setSleep(false);               // keep the radio responsive (SNTP)
@@ -218,15 +219,17 @@ void loop()
     DropEvent ev;
     while (gSampler.pop(ev))
     {
-        gLog.append(ev);
+        gSampler.recordCalDrop(ev.envPeak);
+        const uint16_t volUl = gSampler.estimateDropUl(ev.envPeak);
+        gLog.append(ev, gSampler.qtyEnabled() ? volUl : 0);
 
         struct tm tmv;
         if (TimeService::localTime(tmv))
-            gHisto.record(tmv);          // buckets only while the clock is sane
+            gHisto.record(tmv, (time_t)(ev.epochUs / 1000000LL), volUl);
 
         gUi.noteEvent();
-        DBG_PRINTF("[DROP] peak=%u env=%u epoch=%lld\n",
-                   ev.peak, ev.envPeak, (long long)ev.epochUs);
+        DBG_PRINTF("[DROP] peak=%u env=%u vol=%uuL epoch=%lld\n",
+                   ev.peak, ev.envPeak, volUl, (long long)ev.epochUs);
     }
 
     // --- 2. Time maintenance + one-time histogram rebuild after first sync -
@@ -236,7 +239,7 @@ void loop()
         gFirstTimeSync = true;
         struct tm tmv;
         if (TimeService::localTime(tmv))
-            gLog.rebuildToday(gHisto, tmv);
+            gLog.rebuildToday(gHisto, tmv, &gSampler);
         Serial.printf("[NTP] first sync OK (TZ=%s)\n", TZ_STRING);
     }
 

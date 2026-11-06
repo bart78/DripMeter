@@ -9,9 +9,11 @@
 //    GET /status.json machine-readable snapshot incl. histogram arrays
 //    GET /stream.json compact 512-point peak-held envelope + state stream
 //    GET /set         apply + persist calibration parameters
+//    GET /calrun      start/stop/apply water quantity scale calibration
 //    GET /record      save rolling 60s PSRAM audio ring to /rec.wav
 //    GET /rec.wav     download saved WAV recording
 //    GET /clearlog    wipe /drops.csv and reset today's histogram
+//    POST /update     OTA firmware update over Wi-Fi
 // ============================================================================
 #pragma once
 
@@ -40,6 +42,7 @@ private:
     void onStatus();
     void onStream();
     void onSet();
+    void onCalRun();
     void onClearLog();
     void onRecord();
     void onRecWav();

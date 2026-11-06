@@ -48,6 +48,71 @@ public:
     uint16_t releaseMs()       const { return _releaseMs.load(std::memory_order_relaxed); }
     uint16_t refractoryMs()    const { return _refractoryMs.load(std::memory_order_relaxed); }
 
+    // --- Water Quantity & In-Place Scale Calibration ------------------------
+    void     setQtyEnabled(bool en)          { _qtyEnabled.store(en, std::memory_order_relaxed); }
+    void     setUlPerDropTenths(uint16_t t)  { _ulPerDropTenths.store(t, std::memory_order_relaxed); }
+    void     setCalAvgEnvTenths(uint16_t t)  { _calAvgEnvTenths.store(t, std::memory_order_relaxed); }
+
+    bool     qtyEnabled()      const { return _qtyEnabled.load(std::memory_order_relaxed); }
+    uint16_t ulPerDropTenths() const { return _ulPerDropTenths.load(std::memory_order_relaxed); }
+    uint16_t calAvgEnvTenths() const { return _calAvgEnvTenths.load(std::memory_order_relaxed); }
+
+    // Estimate volume in microliters (uL) for a single drop impact.
+    // Uses 80% calibrated mean drop mass + 20% EnvPeak ratio (clamped 0.5x..1.5x)
+    // so residual water film variance cancels out while onset/tail drops scale naturally.
+    uint16_t estimateDropUl(uint16_t envPeak) const
+    {
+        const float baseUl = (float)_ulPerDropTenths.load(std::memory_order_relaxed) * 0.1f;
+        const float avgEnv = (float)_calAvgEnvTenths.load(std::memory_order_relaxed) * 0.1f;
+        float ratio = (avgEnv > 1.0f && envPeak > 0) ? ((float)envPeak / avgEnv) : 1.0f;
+        if (ratio < 0.5f) ratio = 0.5f;
+        if (ratio > 1.5f) ratio = 1.5f;
+        const float blend = 0.80f + 0.20f * ratio;
+        int32_t ul = (int32_t)(baseUl * blend + 0.5f);
+        if (ul < 1) ul = 1;
+        if (ul > 5000) ul = 5000;
+        return (uint16_t)ul;
+    }
+
+    // Live scale calibration counter (Start -> collect drops -> Stop & Weigh).
+    void startCalRun(int64_t nowEpochSec)
+    {
+        _calDrops.store(0, std::memory_order_relaxed);
+        _calEnvSum.store(0, std::memory_order_relaxed);
+        _calStartEpoch.store(nowEpochSec, std::memory_order_relaxed);
+        _calStopEpoch.store(0, std::memory_order_relaxed);
+        _calRunning.store(true, std::memory_order_relaxed);
+    }
+    void stopCalRun(int64_t nowEpochSec)
+    {
+        if (_calRunning.load(std::memory_order_relaxed))
+        {
+            _calStopEpoch.store(nowEpochSec, std::memory_order_relaxed);
+            _calRunning.store(false, std::memory_order_relaxed);
+        }
+    }
+    void resetCalRun()
+    {
+        _calRunning.store(false, std::memory_order_relaxed);
+        _calDrops.store(0, std::memory_order_relaxed);
+        _calEnvSum.store(0, std::memory_order_relaxed);
+        _calStartEpoch.store(0, std::memory_order_relaxed);
+        _calStopEpoch.store(0, std::memory_order_relaxed);
+    }
+    void recordCalDrop(uint16_t envPeak)
+    {
+        if (_calRunning.load(std::memory_order_relaxed))
+        {
+            _calDrops.fetch_add(1, std::memory_order_relaxed);
+            _calEnvSum.fetch_add(envPeak, std::memory_order_relaxed);
+        }
+    }
+    bool     calRunning()    const { return _calRunning.load(std::memory_order_relaxed); }
+    uint32_t calDrops()      const { return _calDrops.load(std::memory_order_relaxed); }
+    uint32_t calEnvSum()     const { return _calEnvSum.load(std::memory_order_relaxed); }
+    int64_t  calStartEpoch() const { return _calStartEpoch.load(std::memory_order_relaxed); }
+    int64_t  calStopEpoch()  const { return _calStopEpoch.load(std::memory_order_relaxed); }
+
     // Peak-holding decimated history for the live web scope (512 points).
     static const uint16_t kEnvHist = 512;
     uint16_t envHistAt(uint32_t i)   const { return _envHist[i & (kEnvHist - 1)]; }
@@ -86,6 +151,16 @@ private:
     std::atomic<uint16_t> _captureMs{CAPTURE_WINDOW_MS};
     std::atomic<uint16_t> _releaseMs{RELEASE_MS};
     std::atomic<uint16_t> _refractoryMs{REFRACTORY_MS};
+
+    // Water quantity & calibration session state.
+    std::atomic<bool>     _qtyEnabled{DEFAULT_QTY_ENABLED != 0};
+    std::atomic<uint16_t> _ulPerDropTenths{DEFAULT_UL_TENTHS};
+    std::atomic<uint16_t> _calAvgEnvTenths{DEFAULT_CAL_ENV_TENTHS};
+    std::atomic<bool>     _calRunning{false};
+    std::atomic<uint32_t> _calDrops{0};
+    std::atomic<uint32_t> _calEnvSum{0};
+    std::atomic<int64_t>  _calStartEpoch{0};
+    std::atomic<int64_t>  _calStopEpoch{0};
 
     // Peak-holding decimated history ring for the live web scope.
     uint16_t              _envHist[kEnvHist]   = {0};

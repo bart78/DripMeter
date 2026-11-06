@@ -19,6 +19,7 @@
 #include <FS.h>
 #include "config.h"
 #include "drop_event.h"
+#include "drop_sampler.h"
 #include "histogram.h"
 
 class DropLog
@@ -30,16 +31,18 @@ public:
 
     // Append one event as a CSV line and flush. Requires a synced clock
     // for a meaningful ISO timestamp; the epoch field is always written.
-    bool append(const DropEvent &ev);
+    bool append(const DropEvent &ev, uint16_t volUl = 0);
 
     // Append a settings snapshot line ('#cfg,...') so any later analysis
     // knows which configuration produced the surrounding data.
     void appendSettings(uint16_t margin, uint8_t nmult,
-                        uint16_t refr, uint16_t rel, uint16_t cap);
+                        uint16_t refr, uint16_t rel, uint16_t cap,
+                        bool qtyEn = false, uint16_t uldTenths = DEFAULT_UL_TENTHS);
 
-    // Replay the log and rebuild the histogram for the given local date:
-    // today's counts plus yesterday's (the dim comparison layer).
-    uint32_t rebuildToday(Histogram &h, const struct tm &today);
+    // Replay the log and rebuild the histogram + rolling volume metrics for
+    // the given local date.
+    uint32_t rebuildToday(Histogram &h, const struct tm &today,
+                          const DropSampler *sampler = nullptr);
 
     // Non-blocking housekeeping: compact when size/free-space limits are
     // exceeded (rate-limited by LOG_COMPACT_COOLDOWN_MS). Call from loop().

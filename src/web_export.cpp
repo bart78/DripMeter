@@ -7,7 +7,9 @@
 #include "config.h"
 #include <WiFi.h>
 #include <LittleFS.h>
+#include <Update.h>
 #include <stdio.h>
+#include <math.h>
 #include <atomic>
 
 // Loop liveness counter maintained by main's loop() (diagnostic).
@@ -281,6 +283,12 @@ namespace
   details.tuning-drawer[open] > summary::after {
     content: "Hide Knobs ▴";
   }
+  details.qty-drawer > summary::after {
+    content: "Configure & Calibrate ▾";
+  }
+  details.qty-drawer[open] > summary::after {
+    content: "Hide Calibration ▴";
+  }
   .tuning-body {
     padding: 1rem 1.1rem;
   }
@@ -295,8 +303,96 @@ namespace
     background: #0d1119;
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
+    touch-action: pan-y;
+    cursor: default;
+  }
+  canvas#scope-cv.unlocked {
     touch-action: none;
     cursor: ns-resize;
+  }
+  .cal-steps {
+    margin: 0.5rem 0 0.85rem 1.2rem;
+    padding: 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+  .cal-steps li {
+    margin-block-end: 0.3rem;
+  }
+  .cal-steps strong {
+    color: var(--text-main);
+  }
+  .cal-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem 0.9rem;
+    margin-block-end: 0.85rem;
+  }
+  .cal-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+  }
+  .cal-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    margin-block-top: 0.65rem;
+  }
+  .cal-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .cal-field label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  .cal-field input[type="number"] {
+    width: 7.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    min-height: 40px;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-card);
+    color: var(--text-main);
+    box-sizing: border-box;
+  }
+  .chk-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding-block-end: 0.85rem;
+    margin-block-end: 0.85rem;
+    border-block-end: 1px solid var(--border-subtle);
+  }
+  .chk-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  .chk-label input[type="checkbox"] {
+    width: 1.15rem;
+    height: 1.15rem;
+    accent-color: var(--accent-cyan);
+    cursor: pointer;
   }
   .scope-bar {
     display: flex;
@@ -410,9 +506,34 @@ void WebExport::begin()
     _server.on("/status.json", HTTP_GET, [this]() { onStatus(); });
     _server.on("/stream.json", HTTP_GET, [this]() { onStream(); });
     _server.on("/set", HTTP_GET, [this]() { onSet(); });
+    _server.on("/calrun", HTTP_GET, [this]() { onCalRun(); });
     _server.on("/clearlog", HTTP_GET, [this]() { onClearLog(); });
     _server.on("/record", HTTP_GET, [this]() { onRecord(); });
     _server.on("/rec.wav", HTTP_GET, [this]() { onRecWav(); });
+    _server.on("/update", HTTP_POST,
+        [this]() {
+            const bool ok = !Update.hasError();
+            _server.sendHeader("Connection", "close");
+            _server.send(ok ? 200 : 500, "application/json",
+                         ok ? "{\"ok\":1,\"msg\":\"OTA success, rebooting\"}"
+                            : "{\"ok\":0,\"err\":\"OTA failed\"}");
+            delay(400);
+            if (ok) ESP.restart();
+        },
+        [this]() {
+            HTTPUpload &up = _server.upload();
+            if (up.status == UPLOAD_FILE_START) {
+                Serial.printf("[OTA] start: %s\n", up.filename.c_str());
+                Update.begin(UPDATE_SIZE_UNKNOWN);
+            } else if (up.status == UPLOAD_FILE_WRITE) {
+                Update.write(up.buf, up.currentSize);
+            } else if (up.status == UPLOAD_FILE_END) {
+                if (Update.end(true))
+                    Serial.printf("[OTA] complete: %u bytes\n", up.totalSize);
+                else
+                    Update.printError(Serial);
+            }
+        });
     _server.on("/bootlog.csv", HTTP_GET, [this]() {
         fs::File rd = LittleFS.open("/bootlog.csv", "r");
         if (!rd) { _server.send(404, "text/plain", "no boot log yet"); return; }
@@ -548,7 +669,7 @@ void WebExport::onRoot()
     histogramSVG(svg, nowIdx);
 
     String page;
-    page.reserve(16384);
+    page.reserve(24576);
     page += "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
             "<title>DripMeter</title>";
@@ -610,6 +731,41 @@ void WebExport::onRoot()
         (unsigned)_sampler.rawADC());
     page += buf;
 
+    // --- Water Quantity KPI Row (visible when "Measure quantity" is checked) ---
+    const uint32_t nowEpoch = (uint32_t)(TimeService::epochUs() / 1000000LL);
+    const float vol1hMl = (float)_histo.lastHourVolUl(nowEpoch) / 1000.0f;
+    const uint32_t drops1h = _histo.lastHourDrops(nowEpoch);
+    const float vol24hMl = (float)_histo.last24hVolUl(nowEpoch) / 1000.0f;
+    const uint32_t drops24h = _histo.last24hDrops(nowEpoch);
+    const float volTodayMl = (float)_histo.totalVolTodayUl() / 1000.0f;
+    const float volAvg24hMl = (float)_histo.rolling24hAvgVolUl(nowEpoch) / 1000.0f;
+    const float uldUl = (float)_sampler.ulPerDropTenths() / 10.0f;
+    const float dpm = (uldUl > 0.1f) ? (1000.0f / uldUl) : 20.0f;
+
+    snprintf(buf, sizeof(buf),
+        "<section class='kpi-grid' id='vol-kpi-grid' style='display:%s' aria-label='Water quantity metrics'>"
+        "<div class='card'>"
+        "<div class='kpi-label'>Last Hour Volume</div>"
+        "<div class='kpi-val kpi-accent'><span id='kpi-vol-1h'>%.2f</span> <span style='font-size:0.95rem;color:#8b9bb4'>mL</span></div>"
+        "<div class='kpi-sub' id='kpi-vol-1h-sub'>%lu drops in last 60m</div>"
+        "</div>"
+        "<div class='card'>"
+        "<div class='kpi-label'>Last 24 Hours Volume</div>"
+        "<div class='kpi-val'><span id='kpi-vol-24h'>%.2f</span> <span style='font-size:0.95rem;color:#8b9bb4'>mL</span></div>"
+        "<div class='kpi-sub' id='kpi-vol-24h-sub'>%lu drops · Today: %.2f mL</div>"
+        "</div>"
+        "<div class='card'>"
+        "<div class='kpi-label'>24h Rolling Average</div>"
+        "<div class='kpi-val'><span id='kpi-vol-avg'>%.2f</span> <span style='font-size:0.95rem;color:#8b9bb4'>mL/day</span></div>"
+        "<div class='kpi-sub' id='kpi-vol-trend'>Calibrated: %.1f &micro;L/drop (~%.1f drops/mL)</div>"
+        "</div>"
+        "</section>",
+        _sampler.qtyEnabled() ? "grid" : "none",
+        vol1hMl, (unsigned long)drops1h,
+        vol24hMl, (unsigned long)drops24h, volTodayMl,
+        volAvg24hMl, uldUl, dpm);
+    page += buf;
+
     // --- 24h Histogram Card ------------------------------------------------
     page += "<section class='card' aria-label='24-hour distribution'>"
             "<div class='sec-head'>"
@@ -633,6 +789,66 @@ void WebExport::onRoot()
             "<button type='button' class='btn btn-danger' id='btn-clear' style='margin-inline-start:auto'>Clear Log</button>"
             "</div></section>";
 
+    // --- Collapsible Water Quantity & Scale Calibration Drawer -------------
+    snprintf(buf, sizeof(buf),
+        "<details class='tuning-drawer qty-drawer' id='qty-drawer'>"
+        "<summary>Water Quantity &amp; Scale Calibration</summary>"
+        "<div class='tuning-body'>"
+        "<div class='chk-row'>"
+        "<label class='chk-label' for='chk-qen'>"
+        "<input type='checkbox' id='chk-qen' %s>"
+        "Measure water quantity (log Volume_uL in CSV &amp; show mL KPIs)"
+        "</label>"
+        "<span class='pill' id='lbl-cal-summary'>%.1f &micro;L/drop (~%.1f drops/mL)</span>"
+        "</div>",
+        _sampler.qtyEnabled() ? "checked" : "",
+        uldUl, dpm);
+    page += buf;
+
+    page += "<fieldset class='knob-group'>"
+            "<legend>In-Place Scale Calibration (No Pouring / Decanting Required)</legend>"
+            "<ol class='cal-steps'>"
+            "<li><strong>Zero / Tare Scale:</strong> Place a small scale under your angled collection tub and zero it (or enter its current weight in <em>Before / Tare (g)</em> below).</li>"
+            "<li><strong>Capture Drops:</strong> Click <strong>Start Calibration Run</strong>. Let real drops fall until the badge turns green (<strong>45+ drops = Ready to Weigh &#10003;</strong>, ~1.5% accuracy).</li>"
+            "<li><strong>Enter Weight:</strong> Click <strong>Stop Run</strong>, read the scale in grams (<strong>1.00 g = 1.00 mL</strong>), and click <strong>Save Calibration</strong>.</li>"
+            "</ol>"
+            "<div class='cal-banner'>"
+            "<div class='cal-metrics'>"
+            "<span class='pill pill-armed' id='cal-badge'>Idle</span>"
+            "<span>Drops: <strong id='cal-drops'>0</strong> / 45+</span>"
+            "<span>Elapsed: <strong id='cal-elapsed'>0s</strong></span>"
+            "<span>Avg EnvPeak: <strong id='cal-env'>--</strong></span>"
+            "</div>"
+            "<div style='display:flex;gap:0.45rem;flex-wrap:wrap'>"
+            "<button type='button' class='btn' id='btn-cal-start'>Start Calibration Run</button>"
+            "<button type='button' class='btn' id='btn-cal-stop' disabled>Stop Run</button>"
+            "<button type='button' class='btn' id='btn-cal-reset'>Reset</button>"
+            "</div></div>";
+
+    snprintf(buf, sizeof(buf),
+        "<div class='cal-row'>"
+        "<div class='cal-field'>"
+        "<label for='in-cal-tare'>Before / Tare (g)</label>"
+        "<input type='number' id='in-cal-tare' step='0.01' min='0' max='5000' value='0.00'>"
+        "</div>"
+        "<div class='cal-field'>"
+        "<label for='in-cal-grams'>Scale Reading After Run (g = mL)</label>"
+        "<input type='number' id='in-cal-grams' step='0.01' min='0.05' max='5000' placeholder='e.g. 2.25'>"
+        "</div>"
+        "<button type='button' class='btn' id='btn-cal-apply'>Save Calibration from Weight</button>"
+        "<div class='cal-field' style='margin-inline-start:auto'>"
+        "<label for='in-manual-ul'>Direct Override (&micro;L/drop)</label>"
+        "<div style='display:flex;gap:0.4rem'>"
+        "<input type='number' id='in-manual-ul' step='0.5' min='5' max='500' value='%.1f'>"
+        "<button type='button' class='btn' id='btn-manual-ul'>Set &micro;L</button>"
+        "</div></div></div>"
+        "<div style='margin-block-start:0.55rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap'>"
+        "<span class='kpi-sub'>Each drop is logged with an 80%% base mass + 20%% acoustic EnvPeak blend. Saving recalibrates today's totals.</span>"
+        "<span id='cal-msg' class='save-status' aria-live='polite'></span>"
+        "</div></fieldset></div></details>",
+        uldUl);
+    page += buf;
+
     // --- Live Signal Scope Card (Always visible) + Collapsible Tuning ------
     page += "<section class='card' style='margin-block-start:1rem' aria-label='Live Signal Scope'>"
             "<div class='sec-head'>"
@@ -646,13 +862,13 @@ void WebExport::onRoot()
             "<div class='scope-bar'>"
             "<div class='legend'>"
             "<span><i class='dot' style='background:#38bdf8'></i>Envelope</span>"
-            "<span><i class='dot' style='background:#f43f5e'></i>Threshold (drag line)</span>"
+            "<span><i class='dot' style='background:#f43f5e'></i><span id='thr-legend'>Threshold (open knobs to drag)</span></span>"
             "<span><i class='dot' style='background:#64748b'></i>Baseline</span>"
             "<span><i class='dot' style='background:#22c55e'></i>Capture window</span>"
             "<span><i class='dot' style='background:#f59e0b'></i>Release / Refractory holdoff</span>"
             "</div></div></div>"
 
-            "<details class='tuning-drawer' id='tuning-drawer' open>"
+            "<details class='tuning-drawer' id='tuning-drawer'>"
             "<summary>Detection Tuning Knobs</summary>"
             "<div class='tuning-body'>"
             "<form id='tune-form' action='/set' method='GET'>"
@@ -764,10 +980,12 @@ void WebExport::onRoot()
 <script>
 (() => {
   const drawer = document.getElementById('tuning-drawer');
+  const qtyDrawer = document.getElementById('qty-drawer');
   const cv = document.getElementById('scope-cv');
   const ctx = cv.getContext('2d');
   const form = document.getElementById('tune-form');
   const saveBadge = document.getElementById('save-badge');
+  const thrLegend = document.getElementById('thr-legend');
 
   let paused = false;
   let activeKnob = null;
@@ -780,13 +998,100 @@ void WebExport::onRoot()
     sps: 18000
   };
   let ymax = 64;
-  let lastDropEpochUs = 0;
 
-  if (sessionStorage.getItem('dm_tuning_open') === '0' && location.hash !== '#tuning') {
-    drawer.open = false;
+  // Lock scope threshold dragging unless "Detection Tuning Knobs" is open
+  function syncScopeLock() {
+    const unlocked = drawer.open;
+    cv.classList.toggle('unlocked', unlocked);
+    if (thrLegend) {
+      thrLegend.textContent = unlocked ? 'Threshold (drag line)' : 'Threshold (open knobs to drag)';
+    }
   }
+
+  if (location.hash === '#tuning' || sessionStorage.getItem('dm_tuning_open') === '1') {
+    drawer.open = true;
+  }
+  syncScopeLock();
   drawer.addEventListener('toggle', () => {
     sessionStorage.setItem('dm_tuning_open', drawer.open ? '1' : '0');
+    syncScopeLock();
+  });
+
+  if (sessionStorage.getItem('dm_qty_open') === '1') {
+    qtyDrawer.open = true;
+  }
+  qtyDrawer.addEventListener('toggle', () => {
+    sessionStorage.setItem('dm_qty_open', qtyDrawer.open ? '1' : '0');
+  });
+
+  // Water Quantity & Scale Calibration controls
+  const chkQen = document.getElementById('chk-qen');
+  const volGrid = document.getElementById('vol-kpi-grid');
+  const calMsg = document.getElementById('cal-msg');
+  function flashCalMsg(txt) {
+    calMsg.textContent = txt;
+    setTimeout(() => { if (calMsg.textContent === txt) calMsg.textContent = ''; }, 3000);
+  }
+
+  chkQen.addEventListener('change', async () => {
+    const en = chkQen.checked ? 1 : 0;
+    volGrid.style.display = en ? 'grid' : 'none';
+    await fetch(`/calrun?action=toggle&qen=${en}`);
+    flashCalMsg(en ? 'Quantity tracking enabled ✓' : 'Quantity tracking hidden');
+    pollStatus();
+  });
+
+  document.getElementById('btn-cal-start').addEventListener('click', async () => {
+    await fetch('/calrun?action=start');
+    flashCalMsg('Calibration run started — let 45+ drops fall');
+    pollStatus();
+  });
+
+  document.getElementById('btn-cal-stop').addEventListener('click', async () => {
+    await fetch('/calrun?action=stop');
+    flashCalMsg('Run stopped — enter scale weight (g) below');
+    pollStatus();
+  });
+
+  document.getElementById('btn-cal-reset').addEventListener('click', async () => {
+    await fetch('/calrun?action=reset');
+    flashCalMsg('Counter reset');
+    pollStatus();
+  });
+
+  document.getElementById('btn-cal-apply').addEventListener('click', async () => {
+    const tare = parseFloat(document.getElementById('in-cal-tare').value) || 0;
+    const after = parseFloat(document.getElementById('in-cal-grams').value);
+    if (isNaN(after) || after <= tare) {
+      alert('Please enter a scale reading (in grams) greater than the tare weight.');
+      return;
+    }
+    const netGrams = (after - tare).toFixed(3);
+    const r = await (await fetch(`/calrun?action=apply&grams=${netGrams}`)).json();
+    if (r.ok) {
+      chkQen.checked = true;
+      volGrid.style.display = 'grid';
+      document.getElementById('in-manual-ul').value = Number(r.ul_per_drop).toFixed(1);
+      flashCalMsg(`Saved ${Number(r.ul_per_drop).toFixed(1)} µL/drop ✓`);
+      pollStatus();
+    } else {
+      alert(r.err || 'Need at least 1 recorded drop in the calibration run (or use Direct Override).');
+    }
+  });
+
+  document.getElementById('btn-manual-ul').addEventListener('click', async () => {
+    const ul = parseFloat(document.getElementById('in-manual-ul').value);
+    if (isNaN(ul) || ul < 5 || ul > 500) {
+      alert('Enter a drop volume between 5 and 500 µL.');
+      return;
+    }
+    const r = await (await fetch(`/calrun?action=set_ul&ul=${ul.toFixed(1)}`)).json();
+    if (r.ok) {
+      chkQen.checked = true;
+      volGrid.style.display = 'grid';
+      flashCalMsg(`Set to ${Number(r.ul_per_drop).toFixed(1)} µL/drop ✓`);
+      pollStatus();
+    }
   });
 
   // Synchronize range sliders and number inputs + highlight active parameter on graph
@@ -1079,6 +1384,7 @@ void WebExport::onRoot()
   }
 
   // Drag the red threshold line directly on the canvas to adjust Margin
+  // ONLY when the Detection Tuning Knobs drawer is open (prevents phone swipe accidents).
   let dragging = false;
   function yToMargin(py) {
     const padT = 22, padB = 22;
@@ -1087,6 +1393,7 @@ void WebExport::onRoot()
     return Math.max(5, Math.min(500, v - (lastStream.base || 0)));
   }
   cv.addEventListener('pointerdown', e => {
+    if (!drawer.open) return;
     dragging = true;
     cv.setPointerCapture(e.pointerId);
     activeKnob = 'margin';
@@ -1102,13 +1409,13 @@ void WebExport::onRoot()
     const r = cv.getBoundingClientRect();
     const px = (e.clientX - r.left) * (cv.width / r.width);
     const py = (e.clientY - r.top) * (cv.height / r.height);
-    if (dragging) {
+    if (dragging && drawer.open) {
       const m = yToMargin(py);
       document.getElementById('in-margin').value = m;
       document.getElementById('rng-margin').value = Math.min(120, m);
       document.getElementById('lbl-margin').textContent = m;
       drawScope();
-    } else {
+    } else if (e.pointerType === 'mouse') {
       drawScope(px);
     }
   });
@@ -1168,6 +1475,13 @@ void WebExport::onRoot()
     return `${Math.floor(sec / 86400)}d ago`;
   }
 
+  function formatDur(sec) {
+    if (!sec || sec < 0) return '0s';
+    if (sec < 60) return `${Math.floor(sec)}s`;
+    if (sec < 3600) return `${Math.floor(sec / 60)}m ${Math.floor(sec % 60)}s`;
+    return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
+  }
+
   async function pollStatus() {
     try {
       const j = await (await fetch('/status.json')).json();
@@ -1195,6 +1509,57 @@ void WebExport::onRoot()
         document.getElementById('kpi-ago').textContent = formatAgo((j.epoch_us - j.last_drop_epoch) / 1e6);
       } else {
         document.getElementById('kpi-ago').textContent = '--';
+      }
+
+      // Water Quantity KPIs & Calibration state
+      if (typeof j.qty_enabled === 'boolean') {
+        chkQen.checked = j.qty_enabled;
+        volGrid.style.display = j.qty_enabled ? 'grid' : 'none';
+      }
+      const uld = j.ul_per_drop || 50.0;
+      const dpm = uld > 0.1 ? (1000.0 / uld) : 20.0;
+      document.getElementById('lbl-cal-summary').textContent = `${uld.toFixed(1)} µL/drop (~${dpm.toFixed(1)} drops/mL)`;
+      document.getElementById('kpi-vol-1h').textContent = (j.vol_1h_ml || 0).toFixed(2);
+      document.getElementById('kpi-vol-1h-sub').textContent = `${j.drops_1h || 0} drops in last 60m`;
+      document.getElementById('kpi-vol-24h').textContent = (j.vol_24h_ml || 0).toFixed(2);
+      document.getElementById('kpi-vol-24h-sub').textContent = `${j.drops_24h || 0} drops · Today: ${(j.vol_today_ml || 0).toFixed(2)} mL`;
+      document.getElementById('kpi-vol-avg').textContent = (j.vol_24h_avg_ml || 0).toFixed(2);
+
+      const trendEl = document.getElementById('kpi-vol-trend');
+      if (j.vol_prev24h_ml && j.vol_prev24h_ml > 0.05) {
+        const diffPct = Math.round(((j.vol_24h_ml - j.vol_prev24h_ml) / j.vol_prev24h_ml) * 100);
+        const sign = diffPct > 0 ? '+' : '';
+        const arrow = diffPct > 5 ? '▲ (growing)' : (diffPct < -5 ? '▼ (shrinking)' : '● (steady)');
+        trendEl.textContent = `${sign}${diffPct}% vs prior 24h ${arrow}`;
+      } else {
+        const hrs = Math.max(0.1, (j.log_span_s || 0) / 3600).toFixed(1);
+        trendEl.textContent = `Pace over ${hrs}h log · ${uld.toFixed(1)} µL/drop`;
+      }
+
+      // Calibration run live banner
+      const cDrops = j.cal_drops || 0;
+      const cTarget = j.cal_target || 45;
+      const cRun = !!j.cal_running;
+      document.getElementById('cal-drops').textContent = cDrops;
+      document.getElementById('cal-elapsed').textContent = formatDur(j.cal_elapsed_s || 0);
+      document.getElementById('cal-env').textContent = cDrops > 0 ? ((j.cal_env_sum || 0) / cDrops).toFixed(1) : '--';
+      document.getElementById('btn-cal-start').disabled = cRun;
+      document.getElementById('btn-cal-stop').disabled = !cRun;
+      const cBadge = document.getElementById('cal-badge');
+      if (cRun) {
+        if (cDrops >= cTarget) {
+          cBadge.textContent = `Ready to Weigh ✓ (${cDrops} drops)`;
+          cBadge.className = 'pill pill-armed';
+        } else {
+          cBadge.textContent = `Collecting (${cDrops}/${cTarget})...`;
+          cBadge.className = 'pill pill-rel';
+        }
+      } else if (cDrops > 0) {
+        cBadge.textContent = cDrops >= cTarget ? `Stopped — Ready (${cDrops} drops)` : `Stopped (${cDrops} drops)`;
+        cBadge.className = cDrops >= cTarget ? 'pill pill-armed' : 'pill pill-cap';
+      } else {
+        cBadge.textContent = 'Idle';
+        cBadge.className = 'pill';
       }
 
       if (j.histogram && j.histogram.today && j.histogram.yesterday) {
@@ -1286,7 +1651,14 @@ void WebExport::onStatus()
     }
 
     const String ipStr = WiFi.localIP().toString();
-    char head[900];
+    const uint32_t nowEpoch = (uint32_t)(TimeService::epochUs() / 1000000LL);
+    const uint32_t cStart = _sampler.calStartEpoch();
+    const uint32_t cStop = _sampler.calStopEpoch();
+    const uint32_t cElapsed = _sampler.calRunning()
+                                  ? ((nowEpoch >= cStart && cStart > 0) ? (nowEpoch - cStart) : 0)
+                                  : ((cStop >= cStart && cStart > 0) ? (cStop - cStart) : 0);
+
+    char head[1400];
     snprintf(head, sizeof(head),
         "{\"time\":%s,\"time_synced\":%s,\"epoch_us\":%lld,"
         "\"drops_today\":%lu,\"triggers_total\":%lu,"
@@ -1295,6 +1667,12 @@ void WebExport::onStatus()
         "\"state\":\"%s\",\"sps\":%u,"
         "\"margin\":%u,\"noise_mult\":%u,"
         "\"capture_ms\":%u,\"release_ms\":%u,\"refractory_ms\":%u,"
+        "\"qty_enabled\":%s,\"ul_per_drop\":%.1f,\"cal_avg_env\":%.1f,"
+        "\"vol_today_ml\":%.2f,\"vol_yday_ml\":%.2f,"
+        "\"vol_1h_ml\":%.2f,\"drops_1h\":%lu,"
+        "\"vol_24h_ml\":%.2f,\"drops_24h\":%lu,\"vol_prev24h_ml\":%.2f,"
+        "\"vol_24h_avg_ml\":%.2f,\"log_span_s\":%lu,"
+        "\"cal_running\":%s,\"cal_drops\":%lu,\"cal_env_sum\":%lu,\"cal_elapsed_s\":%lu,\"cal_target\":%u,"
         "\"wifi_up\":%s,\"rssi\":%d,\"ip\":\"%s\","
         "\"fs_free\":%u,\"fs_total\":%u,\"log_bytes\":%u,"
         "\"uptime_s\":%lu,\"loop_ms_ago\":%lu,"
@@ -1313,6 +1691,23 @@ void WebExport::onStatus()
         (unsigned)_sampler.margin(), (unsigned)_sampler.noiseMult(),
         (unsigned)_sampler.captureWindowMs(), (unsigned)_sampler.releaseMs(),
         (unsigned)_sampler.refractoryMs(),
+        _sampler.qtyEnabled() ? "true" : "false",
+        (float)_sampler.ulPerDropTenths() / 10.0f,
+        (float)_sampler.calAvgEnvTenths() / 10.0f,
+        (float)_histo.totalVolTodayUl() / 1000.0f,
+        (float)_histo.totalVolYdayUl() / 1000.0f,
+        (float)_histo.lastHourVolUl(nowEpoch) / 1000.0f,
+        (unsigned long)_histo.lastHourDrops(nowEpoch),
+        (float)_histo.last24hVolUl(nowEpoch) / 1000.0f,
+        (unsigned long)_histo.last24hDrops(nowEpoch),
+        (float)_histo.prev24hVolUl(nowEpoch) / 1000.0f,
+        (float)_histo.rolling24hAvgVolUl(nowEpoch) / 1000.0f,
+        (unsigned long)_histo.logSpanSeconds(nowEpoch),
+        _sampler.calRunning() ? "true" : "false",
+        (unsigned long)_sampler.calDrops(),
+        (unsigned long)_sampler.calEnvSum(),
+        (unsigned long)cElapsed,
+        (unsigned)CAL_TARGET_DROPS,
         WiFi.status() == WL_CONNECTED ? "true" : "false",
         (int)WiFi.RSSI(), ipStr.c_str(),
         (unsigned)(_log.totalBytes() - _log.usedBytes()),
@@ -1322,7 +1717,7 @@ void WebExport::onStatus()
         BUCKET_MINUTES, (unsigned)nowBucket);
 
     String js;
-    js.reserve(3200);
+    js.reserve(3600);
     js += head;
     for (uint8_t i = 0; i < Histogram::kBuckets; ++i)
     {
@@ -1349,7 +1744,8 @@ void WebExport::onClearLog()
     _log.clearLog();
     _log.appendSettings(_sampler.margin(), _sampler.noiseMult(),
                         _sampler.refractoryMs(), _sampler.releaseMs(),
-                        _sampler.captureWindowMs());
+                        _sampler.captureWindowMs(),
+                        _sampler.qtyEnabled(), _sampler.ulPerDropTenths());
     struct tm tmv;
     if (TimeService::localTime(tmv))
         _histo.resetForDate(tmv);
@@ -1483,7 +1879,8 @@ void WebExport::onSet()
         Tuning::reset(_sampler);
         _log.appendSettings(_sampler.margin(), _sampler.noiseMult(),
                             _sampler.refractoryMs(), _sampler.releaseMs(),
-                            _sampler.captureWindowMs());
+                            _sampler.captureWindowMs(),
+                            _sampler.qtyEnabled(), _sampler.ulPerDropTenths());
         if (_server.hasArg("ajax"))
         {
             _server.send(200, "application/json", "{\"ok\":1}");
@@ -1528,7 +1925,8 @@ void WebExport::onSet()
     Tuning::save(_sampler);
     _log.appendSettings(_sampler.margin(), _sampler.noiseMult(),
                         _sampler.refractoryMs(), _sampler.releaseMs(),
-                        _sampler.captureWindowMs());
+                        _sampler.captureWindowMs(),
+                        _sampler.qtyEnabled(), _sampler.ulPerDropTenths());
 
     if (_server.hasArg("ajax"))
     {
@@ -1537,4 +1935,102 @@ void WebExport::onSet()
     }
     _server.sendHeader("Location", "/#tuning");
     _server.send(302, "text/plain", "");
+}
+
+// ---------------------------------------------------------------------------
+// /calrun — start/stop/reset/apply water quantity & in-place scale calibration
+// ---------------------------------------------------------------------------
+void WebExport::onCalRun()
+{
+    const String action = _server.arg("action");
+    const uint32_t nowEpoch = (uint32_t)(TimeService::epochUs() / 1000000LL);
+
+    if (action == "toggle")
+    {
+        const bool en = (_server.arg("qen").toInt() != 0);
+        _sampler.setQtyEnabled(en);
+        Tuning::save(_sampler);
+        _log.appendSettings(_sampler.margin(), _sampler.noiseMult(),
+                            _sampler.refractoryMs(), _sampler.releaseMs(),
+                            _sampler.captureWindowMs(),
+                            _sampler.qtyEnabled(), _sampler.ulPerDropTenths());
+    }
+    else if (action == "start")
+    {
+        _sampler.startCalRun(nowEpoch);
+    }
+    else if (action == "stop")
+    {
+        _sampler.stopCalRun(nowEpoch);
+    }
+    else if (action == "reset")
+    {
+        _sampler.resetCalRun();
+    }
+    else if (action == "apply")
+    {
+        _sampler.stopCalRun(nowEpoch);
+        const float grams = _server.arg("grams").toFloat();
+        uint32_t drops = _sampler.calDrops();
+        if (_server.hasArg("drops") && _server.arg("drops").toInt() > 0)
+            drops = (uint32_t)_server.arg("drops").toInt();
+
+        if (grams <= 0.01f || drops == 0)
+        {
+            _server.send(400, "application/json",
+                         "{\"ok\":0,\"err\":\"Record drops in a calibration run before applying scale weight.\"}");
+            return;
+        }
+        // 1.00 g water = 1,000 uL = 10,000 tenths of uL
+        long ulTenths = lroundf((grams * 10000.0f) / (float)drops);
+        if (ulTenths < 50) ulTenths = 50;       // min 5.0 uL/drop
+        if (ulTenths > 5000) ulTenths = 5000;   // max 500.0 uL/drop
+        _sampler.setUlPerDropTenths((uint16_t)ulTenths);
+
+        if (_sampler.calEnvSum() > 0 && _sampler.calDrops() > 0)
+        {
+            long envTenths = lroundf(((float)_sampler.calEnvSum() * 10.0f) / (float)_sampler.calDrops());
+            if (envTenths >= 50 && envTenths <= 2000)
+                _sampler.setCalAvgEnvTenths((uint16_t)envTenths);
+        }
+        _sampler.setQtyEnabled(true);
+        Tuning::save(_sampler);
+        _log.appendSettings(_sampler.margin(), _sampler.noiseMult(),
+                            _sampler.refractoryMs(), _sampler.releaseMs(),
+                            _sampler.captureWindowMs(),
+                            _sampler.qtyEnabled(), _sampler.ulPerDropTenths());
+
+        struct tm tmv;
+        if (TimeService::localTime(tmv))
+            _log.rebuildToday(_histo, tmv, &_sampler);
+    }
+    else if (action == "set_ul")
+    {
+        const float ul = _server.arg("ul").toFloat();
+        long ulTenths = lroundf(ul * 10.0f);
+        if (ulTenths < 50) ulTenths = 50;
+        if (ulTenths > 5000) ulTenths = 5000;
+        _sampler.setUlPerDropTenths((uint16_t)ulTenths);
+        _sampler.setQtyEnabled(true);
+        Tuning::save(_sampler);
+        _log.appendSettings(_sampler.margin(), _sampler.noiseMult(),
+                            _sampler.refractoryMs(), _sampler.releaseMs(),
+                            _sampler.captureWindowMs(),
+                            _sampler.qtyEnabled(), _sampler.ulPerDropTenths());
+
+        struct tm tmv;
+        if (TimeService::localTime(tmv))
+            _log.rebuildToday(_histo, tmv, &_sampler);
+    }
+
+    char out[256];
+    snprintf(out, sizeof(out),
+             "{\"ok\":1,\"qty_enabled\":%s,\"ul_per_drop\":%.1f,\"cal_avg_env\":%.1f,"
+             "\"cal_running\":%s,\"cal_drops\":%lu}",
+             _sampler.qtyEnabled() ? "true" : "false",
+             (float)_sampler.ulPerDropTenths() / 10.0f,
+             (float)_sampler.calAvgEnvTenths() / 10.0f,
+             _sampler.calRunning() ? "true" : "false",
+             (unsigned long)_sampler.calDrops());
+    _server.send(200, "application/json", out);
 }

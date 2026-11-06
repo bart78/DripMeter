@@ -126,16 +126,21 @@
 #define RING_CAPACITY           64         // SPSC event ring, power of two
 
 // ---------------------------------------------------------------------------
-// 8. LittleFS persistence
+// 8. LittleFS persistence & Water Quantity Calibration
 //    (partitions_8MB.csv gives the LittleFS partition ~5.7 MB; the log is
 //    rate-limited by compaction well before that)
 // ---------------------------------------------------------------------------
 #define LOG_PATH                "/drops.csv"
-#define LOG_HEADER              "ISO_Timestamp,Epoch,PeakADC,EnvPeak"
+#define LOG_HEADER              "ISO_Timestamp,Epoch,PeakADC,EnvPeak,Volume_uL"
 #define LOG_MAX_BYTES           (3UL * 1024UL * 1024UL)  // ~90 days @ 1 drop/min
 #define LOG_MIN_FREE_BYTES      (512UL * 1024UL)         // compact when tight
 #define LOG_KEEP_FRACTION       0.66f                    // keep newest 2/3
 #define LOG_COMPACT_COOLDOWN_MS 3600000UL                // at most once/hour
+
+#define DEFAULT_QTY_ENABLED     0          // 1 = measure & display water volume (mL)
+#define DEFAULT_UL_TENTHS       500        // 50.0 uL (0.050 mL) default per drop
+#define DEFAULT_CAL_ENV_TENTHS  315        // 31.5 default mean EnvPeak reference
+#define CAL_TARGET_DROPS        45         // ~3 bursts (~2.3 g) for high scale confidence
 
 // ---------------------------------------------------------------------------
 // 9. Histogram

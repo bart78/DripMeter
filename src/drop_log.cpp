@@ -93,7 +93,7 @@ void DropLog::reopen()
         _size = _file.size();
 }
 
-bool DropLog::append(const DropEvent &ev)
+bool DropLog::append(const DropEvent &ev, uint16_t volUl)
 {
     if (!_open)
         return false;
@@ -108,9 +108,9 @@ bool DropLog::append(const DropEvent &ev)
     const int64_t sec  = ev.epochUs / 1000000LL;
     const int64_t msec = (ev.epochUs % 1000000LL) / 1000LL;
 
-    _file.printf("%s,%lld.%03lld,%u,%u\n", iso,
+    _file.printf("%s,%lld.%03lld,%u,%u,%u\n", iso,
                  (long long)sec, (long long)msec,
-                 (unsigned)ev.peak, (unsigned)ev.envPeak);
+                 (unsigned)ev.peak, (unsigned)ev.envPeak, (unsigned)volUl);
     _file.flush();          // persist before acknowledging the event
     _size  = _file.size();
     ++_lines;
@@ -119,23 +119,26 @@ bool DropLog::append(const DropEvent &ev)
 }
 
 void DropLog::appendSettings(uint16_t margin, uint8_t nmult,
-                             uint16_t refr, uint16_t rel, uint16_t cap)
+                             uint16_t refr, uint16_t rel, uint16_t cap,
+                             bool qtyEn, uint16_t uldTenths)
 {
     if (!_open)
         return;
     ++_cfgVersion;
 
-    _file.printf("#cfg,v%lu,%lld,margin=%u,nmult=%u,refr=%u,rel=%u,cap=%u\n",
+    _file.printf("#cfg,v%lu,%lld,margin=%u,nmult=%u,refr=%u,rel=%u,cap=%u,qen=%d,uld=%.1f\n",
                  (unsigned long)_cfgVersion,
                  (long long)time(nullptr),
                  (unsigned)margin, (unsigned)nmult,
-                 (unsigned)refr, (unsigned)rel, (unsigned)cap);
+                 (unsigned)refr, (unsigned)rel, (unsigned)cap,
+                 (int)qtyEn, (float)uldTenths * 0.1f);
     _file.flush();
     _size  = _file.size();
     ++_lines;
 }
 
-uint32_t DropLog::rebuildToday(Histogram &h, const struct tm &today)
+uint32_t DropLog::rebuildToday(Histogram &h, const struct tm &today,
+                               const DropSampler *sampler)
 {
     if (!_open)
         return 0;
@@ -167,10 +170,10 @@ uint32_t DropLog::rebuildToday(Histogram &h, const struct tm &today)
         if ((++lineNum & 0xFF) == 0)
             yield();
         line = rd.readStringUntil('\n');
-        if (line.length() < 3 || line[0] == '#')
+        if (line.length() < 3 || line[0] == '#' || line.startsWith("ISO_"))
             continue;                       // header / junk
 
-        // Skip to the Epoch column (second CSV field).
+        // Columns: ISO_Timestamp,Epoch,PeakADC,EnvPeak[,Volume_uL]
         const int comma1 = line.indexOf(',');
         if (comma1 <= 0)
             continue;
@@ -185,24 +188,43 @@ uint32_t DropLog::rebuildToday(Histogram &h, const struct tm &today)
         if (!isfinite(ev) || ev < TIME_VALID_EPOCH || ev > 4.1e9)
             continue;                       // corrupt or pre-sync: skip
 
+        // Parse EnvPeak (4th column) so we can always compute calibrated volume.
+        uint16_t envPeak = 31;
+        const int comma3 = line.indexOf(',', comma2 + 1);
+        if (comma3 > comma2)
+        {
+            const int comma4 = line.indexOf(',', comma3 + 1);
+            const String envStr = (comma4 > comma3)
+                                  ? line.substring(comma3 + 1, comma4)
+                                  : line.substring(comma3 + 1);
+            const int ep = envStr.toInt();
+            if (ep > 0 && ep < 4096)
+                envPeak = (uint16_t)ep;
+        }
+
+        const uint16_t volUl = sampler ? sampler->estimateDropUl(envPeak) : (DEFAULT_UL_TENTHS / 10);
+
         const time_t t = (time_t)ev;
+        h.addRolling(t, volUl);
+
         struct tm tmv;
         localtime_r(&t, &tmv);
         if (h.sameDate(tmv))
         {
-            h.add(tmv);
+            h.add(tmv, volUl);
             ++matched;
         }
         else if ((uint8_t)tmv.tm_year == (uint8_t)ydayTm.tm_year &&
                  (uint8_t)tmv.tm_mon  == (uint8_t)ydayTm.tm_mon &&
                  (uint8_t)tmv.tm_mday == (uint8_t)ydayTm.tm_mday)
         {
-            h.addYesterday(tmv);
+            h.addYesterday(tmv, volUl);
         }
     }
     rd.close();
 
-    Serial.printf("[FS] rebuilt histogram: %u drops logged today\n", matched);
+    Serial.printf("[FS] rebuilt histogram: %u drops logged today (%u uL)\n",
+                  matched, (unsigned)h.totalVolTodayUl());
     return matched;
 }
 
