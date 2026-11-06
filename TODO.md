@@ -20,13 +20,18 @@ Because droplets fall from a fixed ceiling height onto the same catchment surfac
 Add a second `<details class="tuning-drawer" id="quantity-drawer">` section on `/` containing:
 - [ ] **"Measure quantity" Enable Checkbox (`q_en`):**
   - Toggles volume calculation, KPI display, and CSV volume logging on/off (persisted in NVS).
-- [ ] **Guided 2-Step Calibration Workflow (with clear plain-English instructions):**
-  1. **Timed / Windowed Collection (Recommended):**
-     - Click **"Start Calibration Counter"** (records `calStartEpoch`, live `calDrops` count, and cumulative $\sum \text{EnvPeak}_i$ while you collect water in a small cup or weigh the container on a $0.01\text{ g}$ scale).
-     - Enter the measured water quantity in **`mL` (or `grams`)** into the calibration input box and click **"Apply Calibration"**.
-     - Computes $k_{\text{env}} = \frac{V_{\text{mL}} \times 1000}{\sum \text{EnvPeak}_i}$ and displays the resulting **Average Drop Size** (e.g., `51.4 µL/drop · 19.5 drops/mL`).
-  2. **Manual / Direct Override:**
-     - Allow directly entering an **Average Drop Volume (`mL` or `µL`)** (default `0.05 mL` / `50 µL`) if enabling quantity tracking before running a weighed collection.
+- [ ] **In-Place Tare / Scale Calibration Workflow (No Secondary Cup, No Decanting):**
+  - *Why in-place:* Putting a secondary cup on top changes the acoustic profile of the container, and pouring/decanting small volumes loses 10–20% of the water to surface tension sticking to the container walls. Weighing the **actual drip container in place** (`1.00 g = 1.00 mL`) solves both.
+  - **Step-by-step UI flow:**
+    1. Place a digital scale under the actual drip container and **zero/tare it (`0.00 g`)** *(or note the container's starting weight if the scale has an auto-off timer)*.
+    2. Click **"Start Calibration"** on the web UI — the firmware latches `calStartEpoch` and displays a live counter of **`Drops Captured (N)`** and **`Cumulative Impact Energy (Σ EnvPeak)`** during the run.
+    3. Once enough drops have fallen (e.g., 1–3 bursts / 15–50 drops), read the weight gain on the scale in **`grams` (`= mL`)**, enter it into the input box, and click **"Finish & Save Calibration"**.
+    4. Firmware computes and saves both:
+       - $k_{\text{env}} = \frac{\text{Weight (g)} \times 1000}{\sum \text{EnvPeak}_i}$ ($\mu\text{L}$ per `EnvPeak` unit — weights each drop by its impact size), and
+       - $\bar{V}_{\text{drop}} = \frac{\text{Weight (g)} \times 1000}{N_{\text{drops}}}$ ($\mu\text{L}$/drop, displayed as a sanity readout, e.g., `32 drops = 1.68 g → 52.5 µL/drop · 19.0 drops/mL`).
+- [ ] **Standardized Container / Acoustic Target Note (Hardware To-Do):**
+  - Avoid resonant thin metal bowls (long metallic reverb tails increase `releaseMs` requirements, and standing-wave nodes cause amplitude variation across the floor).
+  - Best acoustics come from a **rigid, well-damped plastic/ABS surface** (crisp 20 ms impulse, fast decay) ideally with a **slightly domed or $15^\circ$ angled strike plate** above the water reservoir so drops always hit the same solid surface rather than a deepening pool of water as the container fills.
 
 ### C. Rolling Volume Metrics & KPIs (`src/histogram.*`, `src/web_export.*`, `src/dashboard.*`)
 Maintain parallel 15-minute microliter buckets (`_volTodayUl[96]`, `_volYdayUl[96]`) and a 7-day daily volume history reconstructed from `/drops.csv` on boot:
