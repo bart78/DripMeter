@@ -587,6 +587,7 @@ void WebExport::begin()
     _server.on("/set", HTTP_GET, [this]() { onSet(); });
     _server.on("/calrun", HTTP_GET, [this]() { onCalRun(); });
     _server.on("/eventlog", HTTP_GET, [this]() { onEventLog(); });
+    _server.on("/pause", HTTP_GET, [this]() { onPause(); });
     _server.on("/clearlog", HTTP_GET, [this]() { onClearLog(); });
     _server.on("/record", HTTP_GET, [this]() { onRecord(); });
     _server.on("/rec.wav", HTTP_GET, [this]() { onRecWav(); });
@@ -756,9 +757,11 @@ void WebExport::onRoot()
     page += FPSTR(PAGE_CSS);
     page += "</head><body>";
 
-    char buf[2048];
+    char buf[2400];
     const uint8_t st = _sampler.detectorState();
-    const char *stClass = (st == 1) ? "pill-cap" : ((st == 2) ? "pill-rel" : "pill-armed");
+    const bool isPaused = _sampler.paused();
+    const char *stClass = isPaused ? "pill-rel" : ((st == 1) ? "pill-cap" : ((st == 2) ? "pill-rel" : "pill-armed"));
+    const char *stText  = isPaused ? "PAUSED" : stateLabel(st);
 
     snprintf(buf, sizeof(buf),
         "<header class='topbar'>"
@@ -767,12 +770,20 @@ void WebExport::onRoot()
         "<span class='brand-sub' id='hdr-time'>%s %s</span>"
         "</div>"
         "<div class='pills'>"
+        "<button type='button' class='btn' id='btn-pause-log' style='min-height:26px;padding:0.15rem 0.55rem;font-size:0.75rem;border-color:%s;color:%s'>%s</button>"
         "<span class='pill %s' id='hdr-state'>%s</span>"
         "<span class='pill' id='hdr-sps'>%.1f kS/s</span>"
         "<span class='pill' id='hdr-wifi'>Wi-Fi %d dBm</span>"
         "</div>"
         "</header>"
         "<main>"
+        "<div id='pause-banner' class='cal-banner' style='display:%s;margin-block-end:0.55rem;border-color:#f59e0b;background:rgba(245,158,11,0.12)'>"
+        "<span style='color:#fbbf24;font-size:0.8rem'><strong>Logging Paused</strong> — Live Scope stays active so you can reposition &amp; test the box without recording fake drops.</span>"
+        "<div style='display:flex;gap:0.4rem;flex-wrap:wrap'>"
+        "<button type='button' class='btn' id='btn-resume-banner' style='border-color:#22c55e;color:#4ade80'>Resume Logging</button>"
+        "<button type='button' class='btn' id='btn-trim-5m'>Undo Last 5m</button>"
+        "<button type='button' class='btn' id='btn-trim-15m'>Undo Last 15m</button>"
+        "</div></div>"
         "<section class='kpi-grid' aria-label='Live summary metrics'>"
         "<div class='card'>"
         "<div class='kpi-label'>Drops Today</div>"
@@ -796,9 +807,13 @@ void WebExport::onRoot()
         "</div>"
         "</section>",
         timeStr, TimeService::synced() ? "(NTP)" : "(unsynced)",
-        stClass, stateLabel(st),
+        isPaused ? "#22c55e" : "#f59e0b",
+        isPaused ? "#4ade80" : "#fbbf24",
+        isPaused ? "Resume Logging" : "Pause Logging",
+        stClass, stText,
         (float)_sampler.samplesPerSecond() / 1000.0f,
         (int)WiFi.RSSI(),
+        isPaused ? "flex" : "none",
         (unsigned long)_histo.total(),
         (unsigned long)ydayTotal,
         (unsigned long)_sampler.triggerCount(),
@@ -860,10 +875,12 @@ void WebExport::onRoot()
     page += svg;
     page += "</div>"
             "<div class='toolbar'>"
-            "<select id='sel-export' class='sel' aria-label='Export file or save audio'>"
+            "<select id='sel-export' class='sel' aria-label='Export file, save audio, or undo handling noise'>"
             "<option value='/drops.csv'>drops.csv (Drop Log)</option>"
             "<option value='rec_wav'>Save &amp; Get 60s Audio (.wav)</option>"
             "<option value='/events.csv'>events.csv (Event Log)</option>"
+            "<option value='trim_5'>Undo Last 5m Drops (Handling Noise)</option>"
+            "<option value='trim_15'>Undo Last 15m Drops (Handling Noise)</option>"
             "<option value='/status.json'>status.json (Snapshot)</option>"
             "<option value='/bootlog.csv'>bootlog.csv (Boot Log)</option>"
             "</select>"
@@ -981,14 +998,18 @@ void WebExport::onRoot()
     snprintf(buf, sizeof(buf),
         "<div class='cal-row'>"
         "<div class='cal-field'>"
+        "<label for='in-cal-drops'>Drops Counted (Piezo or Visual)</label>"
+        "<input type='number' id='in-cal-drops' step='1' min='1' max='50000' placeholder='auto or manual'>"
+        "</div>"
+        "<div class='cal-field'>"
         "<label for='in-cal-tare'>Before / Tare (g)</label>"
         "<input type='number' id='in-cal-tare' step='0.01' min='0' max='5000' value='0.00'>"
         "</div>"
         "<div class='cal-field'>"
-        "<label for='in-cal-grams'>Scale Reading After Run (g = mL)</label>"
+        "<label for='in-cal-grams'>After Weight (g = mL)</label>"
         "<input type='number' id='in-cal-grams' step='0.01' min='0.05' max='5000' placeholder='e.g. 2.25'>"
         "</div>"
-        "<button type='button' class='btn' id='btn-cal-apply'>Save Calibration from Weight</button>"
+        "<button type='button' class='btn' id='btn-cal-apply'>Save Calibration</button>"
         "<div class='cal-field' style='margin-inline-start:auto'>"
         "<label for='in-manual-ul'>Direct Override (&micro;L/drop)</label>"
         "<div style='display:flex;gap:0.4rem'>"
@@ -996,7 +1017,7 @@ void WebExport::onRoot()
         "<button type='button' class='btn' id='btn-manual-ul'>Set &micro;L</button>"
         "</div></div></div>"
         "<div style='margin-block-start:0.55rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap'>"
-        "<span class='kpi-sub'>Each drop is logged with an 80%% base mass + 20%% acoustic EnvPeak blend. Saving recalibrates today's totals.</span>"
+        "<span class='kpi-sub'>Tip: You can enter any drop count (visual count of 1 burst, or a multi-hour catch) + net grams.</span>"
         "<span id='cal-msg' class='save-status' aria-live='polite'></span>"
         "</div></fieldset></div></details>",
         uldUl);
@@ -1008,7 +1029,7 @@ void WebExport::onRoot()
             "<h2>Live Signal Scope (5.2s)</h2>"
             "<div style='display:flex;gap:0.4rem;align-items:center'>"
             "<span id='save-badge' class='save-status' aria-live='polite'></span>"
-            "<button type='button' class='btn' id='btn-pause' style='min-height:28px;padding-inline:0.55rem;font-size:0.75rem'>Pause</button>"
+            "<button type='button' class='btn' id='btn-pause' style='min-height:28px;padding-inline:0.55rem;font-size:0.75rem'>Freeze Scope</button>"
             "</div></div>"
             "<div class='scope-wrap'>"
             "<canvas id='scope-cv' width='760' height='165'></canvas>"
@@ -1225,20 +1246,23 @@ void WebExport::onRoot()
   document.getElementById('btn-cal-apply').addEventListener('click', async () => {
     const tare = parseFloat(document.getElementById('in-cal-tare').value) || 0;
     const after = parseFloat(document.getElementById('in-cal-grams').value);
+    const manDrops = parseInt(document.getElementById('in-cal-drops').value, 10) || 0;
     if (isNaN(after) || after <= tare) {
-      alert('Please enter a scale reading (in grams) greater than the tare weight.');
+      alert('Please enter an After Weight (in grams) greater than the Tare weight.');
       return;
     }
     const netGrams = (after - tare).toFixed(3);
-    const r = await (await fetch(`/calrun?action=apply&grams=${netGrams}`)).json();
+    const qDrops = manDrops > 0 ? `&drops=${manDrops}` : '';
+    const r = await (await fetch(`/calrun?action=apply&grams=${netGrams}${qDrops}`)).json();
     if (r.ok) {
       chkQen.checked = true;
       volGrid.style.display = 'grid';
       document.getElementById('in-manual-ul').value = Number(r.ul_per_drop).toFixed(1);
       flashCalMsg(`Saved ${Number(r.ul_per_drop).toFixed(1)} µL/drop ✓`);
       pollStatus();
+      if (patDrawer.open) refreshPatternAnalysis();
     } else {
-      alert(r.err || 'Need at least 1 recorded drop in the calibration run (or use Direct Override).');
+      alert(r.err || 'Enter a drop count in "Drops Counted" (or run a calibration capture first).');
     }
   });
 
@@ -1321,8 +1345,34 @@ void WebExport::onRoot()
 
   document.getElementById('btn-pause').addEventListener('click', function() {
     paused = !paused;
-    this.textContent = paused ? 'Resume' : 'Pause';
+    this.textContent = paused ? 'Unfreeze Scope' : 'Freeze Scope';
   });
+
+  // Pause Data Gathering (keeps Live Scope running while ignoring handling bumps)
+  async function toggleLogPause(forceAction) {
+    const act = forceAction || 'toggle';
+    await fetch(`/pause?action=${act}`);
+    pollStatus();
+  }
+  document.getElementById('btn-pause-log').addEventListener('click', () => toggleLogPause('toggle'));
+  document.getElementById('btn-resume-banner').addEventListener('click', () => toggleLogPause('resume'));
+
+  async function trimRecentDrops(mins) {
+    if (!confirm(`Remove any drops recorded in the last ${mins} minutes (e.g. accidental handling bumps)?`)) return;
+    const msg = document.getElementById('rec-msg');
+    msg.textContent = `Trimming last ${mins}m...`;
+    try {
+      const j = await (await fetch(`/pause?action=trim&mins=${mins}`)).json();
+      msg.textContent = `Removed ${j.removed || 0} drops from last ${mins}m ✓`;
+      setTimeout(() => { if (msg.textContent.startsWith('Removed')) msg.textContent = ''; }, 4000);
+      pollStatus();
+      if (patDrawer.open) refreshPatternAnalysis();
+    } catch (e) {
+      msg.textContent = 'Trim failed';
+    }
+  }
+  document.getElementById('btn-trim-5m').addEventListener('click', () => trimRecentDrops(5));
+  document.getElementById('btn-trim-15m').addEventListener('click', () => trimRecentDrops(15));
 
   document.getElementById('btn-reset').addEventListener('click', async () => {
     await fetch('/set?reset=1&ajax=1');
@@ -1339,6 +1389,14 @@ void WebExport::onRoot()
   document.getElementById('btn-export').addEventListener('click', async function() {
     const sel = document.getElementById('sel-export').value;
     const msg = document.getElementById('rec-msg');
+    if (sel === 'trim_5') {
+      await trimRecentDrops(5);
+      return;
+    }
+    if (sel === 'trim_15') {
+      await trimRecentDrops(15);
+      return;
+    }
     if (sel === 'rec_wav') {
       this.disabled = true;
       msg.textContent = 'Saving 60s WAV...';
@@ -1387,7 +1445,7 @@ void WebExport::onRoot()
 
       const nowEp = drops.length ? Math.max(Math.floor(Date.now() / 1000), drops[drops.length - 1].ep) : Math.floor(Date.now() / 1000);
       const firstEp = drops.length ? drops[0].ep : nowEp;
-      const totalSpanHr = Math.max(0.25, (nowEp - firstEp) / 3600);
+      const totalSpanHr = Math.max(0.1, (nowEp - firstEp) / 3600);
 
       // Group into bursts (gap > 60s starts a new burst)
       const bursts = [];
@@ -1413,11 +1471,16 @@ void WebExport::onRoot()
       const totalVolMl = drops.reduce((a, d) => a + d.volUl, 0) / 1000.0;
       const baseDropsHr = drops.length / totalSpanHr;
       const baseMlHr = totalVolMl / totalSpanHr;
-      const meanBurstDrops = bursts.length ? (drops.length / bursts.length) : 0;
-      const meanBurstMl = bursts.length ? (totalVolMl / bursts.length) : 0;
+      // Separate main bursts (>=3 drops) from 1-2 drop trailing stragglers for accurate burst sizing
+      const mainBursts = bursts.filter(b => b.drops >= 3);
+      const refBursts = mainBursts.length ? mainBursts : bursts;
+      const refBurstDrops = refBursts.reduce((a, b) => a + b.drops, 0);
+      const refBurstMl = refBursts.reduce((a, b) => a + b.volUl, 0) / 1000.0;
+      const meanBurstDrops = refBursts.length ? (refBurstDrops / refBursts.length) : 0;
+      const meanBurstMl = refBursts.length ? (refBurstMl / refBursts.length) : 0;
       let gapSumMin = 0, gapCnt = 0;
-      for (let i = 1; i < bursts.length; i++) {
-        const gMin = (bursts[i].startEp - bursts[i - 1].startEp) / 60.0;
+      for (let i = 1; i < refBursts.length; i++) {
+        const gMin = (refBursts[i].startEp - refBursts[i - 1].startEp) / 60.0;
         if (gMin < 180) { gapSumMin += gMin; gapCnt++; }
       }
       const meanGapMin = gapCnt > 0 ? (gapSumMin / gapCnt) : 0;
@@ -1428,15 +1491,37 @@ void WebExport::onRoot()
       document.getElementById('bl-burst-ml').textContent = `${meanBurstMl.toFixed(2)} mL`;
       document.getElementById('bl-burst-gap').textContent = gapCnt > 0 ? `${meanGapMin.toFixed(1)} min` : '--';
 
-      // Helper to summarize any subset of drops over a given hours denominator
+      function hourOf(iso) {
+        return parseInt(iso.slice(11, 13), 10) || 0;
+      }
+      function isWeekend(ep) {
+        const day = new Date(ep * 1000).getDay();
+        return day === 0 || day === 6;
+      }
+
+      // Compute exact logged hours in each window by walking [firstEp, nowEp] in 60s steps
+      let obsDaySec = 0, obsNightSec = 0, obsWkdaySec = 0, obsWkndSec = 0;
+      for (let t = firstEp; t < nowEp; t += 60) {
+        const dt = new Date(t * 1000);
+        const hr = dt.getHours();
+        const dy = dt.getDay();
+        if (hr >= 7 && hr < 23) obsDaySec += 60;
+        else if (hr >= 0 && hr < 7) obsNightSec += 60;
+        if (dy === 0 || dy === 6) obsWkndSec += 60;
+        else obsWkdaySec += 60;
+      }
+
       function summarizeWindow(label, filterFn, spanHr) {
+        if (spanHr < 0.08) {
+          return `<tr><th>${label}</th><td colspan='5' style='color:#8b9bb4;text-align:left'>Not logged yet (0.0h observed in this window)</td></tr>`;
+        }
         const sub = drops.filter(filterFn);
-        const subBursts = bursts.filter(b => filterFn({ ep: b.startEp, iso: b.startIso }));
-        const hrs = Math.max(0.1, spanHr);
-        const dHr = sub.length / hrs;
-        const mlHr = (sub.reduce((a, d) => a + d.volUl, 0) / 1000.0) / hrs;
-        const bHr = subBursts.length / hrs;
-        const avgB = subBursts.length ? `${(sub.length / subBursts.length).toFixed(1)}d` : '--';
+        const subBursts = refBursts.filter(b => filterFn({ ep: b.startEp, iso: b.startIso }));
+        const dHr = sub.length / spanHr;
+        const mlHr = (sub.reduce((a, d) => a + d.volUl, 0) / 1000.0) / spanHr;
+        const bHr = subBursts.length / spanHr;
+        const subBurstDrops = subBursts.reduce((a, b) => a + b.drops, 0);
+        const avgB = subBursts.length ? `${(subBurstDrops / subBursts.length).toFixed(1)}d` : '--';
         let vs = '--';
         if (baseDropsHr > 0.1) {
           const ratio = dHr / baseDropsHr;
@@ -1446,26 +1531,13 @@ void WebExport::onRoot()
         return `<tr><th>${label}</th><td>${dHr.toFixed(1)}</td><td>${mlHr.toFixed(2)} mL</td><td>${bHr.toFixed(2)}</td><td>${avgB}</td><td>${vs}</td></tr>`;
       }
 
-      function hourOf(iso) {
-        return parseInt(iso.slice(11, 13), 10) || 0;
-      }
-      function isWeekend(ep) {
-        const day = new Date(ep * 1000).getDay();
-        return day === 0 || day === 6;
-      }
-
-      const dayHrs = Math.max(0.25, totalSpanHr * (16 / 24));
-      const nightHrs = Math.max(0.25, totalSpanHr * (7 / 24));
-      const wkndDrops = drops.filter(d => isWeekend(d.ep));
-      const wkdayDrops = drops.filter(d => !isWeekend(d.ep));
-
       let blRows = '';
       blRows += summarizeWindow('Last 1 Hour', d => d.ep >= nowEp - 3600, Math.min(1.0, totalSpanHr));
       blRows += summarizeWindow('Last 6 Hours', d => d.ep >= nowEp - 21600, Math.min(6.0, totalSpanHr));
-      blRows += summarizeWindow('Daytime (07–23h)', d => { const h = hourOf(d.iso); return h >= 7 && h < 23; }, dayHrs);
-      blRows += summarizeWindow('Deep Night (00–07h)', d => { const h = hourOf(d.iso); return h >= 0 && h < 7; }, nightHrs);
-      blRows += summarizeWindow('Weekdays (Mon–Fri)', d => !isWeekend(d.ep), wkdayDrops.length ? Math.max(0.25, totalSpanHr * (5 / 7)) : totalSpanHr);
-      blRows += summarizeWindow('Weekend (Sat–Sun)', d => isWeekend(d.ep), wkndDrops.length ? Math.max(0.25, totalSpanHr * (2 / 7)) : 0.25);
+      blRows += summarizeWindow('Daytime (07–23h)', d => { const h = hourOf(d.iso); return h >= 7 && h < 23; }, obsDaySec / 3600.0);
+      blRows += summarizeWindow('Deep Night (00–07h)', d => { const h = hourOf(d.iso); return h >= 0 && h < 7; }, obsNightSec / 3600.0);
+      blRows += summarizeWindow('Weekdays (Mon–Fri)', d => !isWeekend(d.ep), obsWkdaySec / 3600.0);
+      blRows += summarizeWindow('Weekend (Sat–Sun)', d => isWeekend(d.ep), obsWkndSec / 3600.0);
       document.getElementById('tb-baseline').innerHTML = blRows;
 
       // Render recent bursts (newest first, up to 25)
@@ -1843,9 +1915,18 @@ void WebExport::onRoot()
         const tpart = j.time.slice(11, 19);
         document.getElementById('hdr-time').textContent = `${tpart} ${j.time_synced ? '(NTP)' : '(unsynced)'}`;
       }
+      const isLogPaused = !!j.paused;
       const stEl = document.getElementById('hdr-state');
-      stEl.textContent = j.state || 'ARMED';
-      stEl.className = 'pill ' + (j.state === 'CAPTURING' ? 'pill-cap' : (j.state === 'RELEASE' ? 'pill-rel' : 'pill-armed'));
+      stEl.textContent = isLogPaused ? 'PAUSED' : (j.state || 'ARMED');
+      stEl.className = 'pill ' + (isLogPaused ? 'pill-rel' : (j.state === 'CAPTURING' ? 'pill-cap' : (j.state === 'RELEASE' ? 'pill-rel' : 'pill-armed')));
+      const pBtn = document.getElementById('btn-pause-log');
+      if (pBtn) {
+        pBtn.textContent = isLogPaused ? 'Resume Logging' : 'Pause Logging';
+        pBtn.style.borderColor = isLogPaused ? '#22c55e' : '#f59e0b';
+        pBtn.style.color = isLogPaused ? '#4ade80' : '#fbbf24';
+      }
+      const pBan = document.getElementById('pause-banner');
+      if (pBan) pBan.style.display = isLogPaused ? 'flex' : 'none';
       document.getElementById('hdr-sps').textContent = `${((j.sps || 0) / 1000).toFixed(1)} kS/s`;
       document.getElementById('hdr-wifi').textContent = `Wi-Fi ${j.rssi} dBm`;
 
@@ -1909,6 +1990,8 @@ void WebExport::onRoot()
       const cTarget = j.cal_target || 45;
       const cRun = !!j.cal_running;
       document.getElementById('cal-drops').textContent = cDrops;
+      const calDropsIn = document.getElementById('in-cal-drops');
+      if (calDropsIn) calDropsIn.placeholder = cDrops > 0 ? `auto (${cDrops})` : 'e.g. 16';
       document.getElementById('cal-elapsed').textContent = formatDur(j.cal_elapsed_s || 0);
       document.getElementById('cal-env').textContent = cDrops > 0 ? ((j.cal_env_sum || 0) / cDrops).toFixed(1) : '--';
       document.getElementById('btn-cal-start').disabled = cRun;
@@ -2067,7 +2150,7 @@ void WebExport::onStatus()
         "\"drops_today\":%lu,\"triggers_total\":%lu,"
         "\"last_drop\":%s,\"last_drop_epoch\":%lld,\"last_peak\":%u,\"last_env_peak\":%u,"
         "\"raw\":%u,\"envelope\":%u,\"env_base\":%u,\"env_noise\":%u,\"threshold\":%u,"
-        "\"state\":\"%s\",\"sps\":%u,"
+        "\"state\":\"%s\",\"paused\":%s,\"sps\":%u,"
         "\"margin\":%u,\"noise_mult\":%u,"
         "\"capture_ms\":%u,\"release_ms\":%u,\"refractory_ms\":%u,"
         "\"qty_enabled\":%s,\"ul_per_drop\":%.1f,\"cal_avg_env\":%.1f,"
@@ -2091,6 +2174,7 @@ void WebExport::onStatus()
         (unsigned)_sampler.envBase(), (unsigned)_sampler.envNoise(),
         (unsigned)_sampler.threshold(),
         stateLabel(_sampler.detectorState()),
+        _sampler.paused() ? "true" : "false",
         (unsigned)_sampler.samplesPerSecond(),
         (unsigned)_sampler.margin(), (unsigned)_sampler.noiseMult(),
         (unsigned)_sampler.captureWindowMs(), (unsigned)_sampler.releaseMs(),
@@ -2544,5 +2628,46 @@ void WebExport::onEventLog()
              _evActive ? "true" : "false",
              _evLabel,
              (unsigned long)evElapsed);
+    _server.send(200, "application/json", out);
+}
+
+// ---------------------------------------------------------------------------
+// /pause — pause/resume drop logging or trim recent handling-noise drops
+// ---------------------------------------------------------------------------
+void WebExport::onPause()
+{
+    const String action = _server.arg("action");
+    uint32_t removed = 0;
+
+    if (action == "pause")
+    {
+        _sampler.setPaused(true);
+    }
+    else if (action == "resume")
+    {
+        _sampler.setPaused(false);
+    }
+    else if (action == "toggle")
+    {
+        _sampler.setPaused(!_sampler.paused());
+    }
+    else if (action == "trim")
+    {
+        long mins = _server.arg("mins").toInt();
+        if (mins < 1) mins = 5;
+        if (mins > 120) mins = 120;
+        _sampler.discardEvents();
+        const double nowSec = (double)TimeService::epochUs() / 1000000.0;
+        const double cutoff = nowSec - (double)(mins * 60);
+        removed = _log.trimSince(cutoff);
+        struct tm tmv;
+        if (TimeService::localTime(tmv))
+            _log.rebuildToday(_histo, tmv, &_sampler);
+    }
+
+    char out[128];
+    snprintf(out, sizeof(out), "{\"ok\":1,\"paused\":%s,\"removed\":%lu}",
+             _sampler.paused() ? "true" : "false",
+             (unsigned long)removed);
     _server.send(200, "application/json", out);
 }

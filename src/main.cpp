@@ -219,6 +219,8 @@ void loop()
     DropEvent ev;
     while (gSampler.pop(ev))
     {
+        if (gSampler.paused())
+            continue;
         gSampler.recordCalDrop(ev.envPeak);
         const uint16_t volUl = gSampler.estimateDropUl(ev.envPeak);
         gLog.append(ev, gSampler.qtyEnabled() ? volUl : 0);

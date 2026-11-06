@@ -279,6 +279,76 @@ bool DropLog::clearLog()
     return _open;
 }
 
+uint32_t DropLog::trimSince(double cutoffEpochSec)
+{
+    if (!_fsOk)
+        return 0;
+    const char *tmpPath = "/drops_trim.tmp";
+    fs::File rd = LittleFS.open(LOG_PATH, "r");
+    fs::File wr = LittleFS.open(tmpPath, "w");
+    if (!rd || !wr)
+    {
+        if (rd) rd.close();
+        if (wr) { wr.close(); LittleFS.remove(tmpPath); }
+        return 0;
+    }
+
+    uint32_t removed = 0;
+    uint32_t kept = 0;
+    uint32_t lineNum = 0;
+    while (rd.available())
+    {
+        if ((++lineNum & 0xFF) == 0)
+            yield();
+        String line = rd.readStringUntil('\n');
+        if (line.length() < 3 || line[0] == '#' || line.startsWith("ISO_"))
+        {
+            wr.print(line);
+            wr.print('\n');
+            ++kept;
+            continue;
+        }
+        const int c1 = line.indexOf(',');
+        const int c2 = (c1 > 0) ? line.indexOf(',', c1 + 1) : -1;
+        if (c1 > 0 && c2 > c1)
+        {
+            const double ev = atof(line.substring(c1 + 1, c2).c_str());
+            if (isfinite(ev) && ev >= cutoffEpochSec)
+            {
+                ++removed;
+                continue;
+            }
+        }
+        wr.print(line);
+        wr.print('\n');
+        ++kept;
+    }
+    wr.flush();
+    rd.close();
+    wr.close();
+
+    if (_open)
+    {
+        _file.close();
+        _open = false;
+    }
+    if (!LittleFS.remove(LOG_PATH) || !LittleFS.rename(tmpPath, LOG_PATH))
+    {
+        LittleFS.remove(tmpPath);
+        reopen();
+        return 0;
+    }
+    reopen();
+    if (_open)
+    {
+        _size  = _file.size();
+        _lines = kept;
+    }
+    Serial.printf("[FS] trimmed %lu recent drop rows since %.0f\n",
+                  (unsigned long)removed, cutoffEpochSec);
+    return removed;
+}
+
 bool DropLog::compact()
 {
     const char *tmpPath = "/drops.tmp";

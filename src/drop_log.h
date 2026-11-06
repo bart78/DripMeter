@@ -52,6 +52,11 @@ public:
     // clean measurement session.
     bool clearLog();
 
+    // Remove any drop rows recorded at or after cutoffEpochSec (e.g. to undo
+    // accidental handling bumps when moving the sensor box). Returns the
+    // number of removed drop rows.
+    uint32_t trimSince(double cutoffEpochSec);
+
     bool     fsOk()       const { return _fsOk; }
     bool     ok()         const { return _open; }
     size_t   fileSize()   const { return _size; }

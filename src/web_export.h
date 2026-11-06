@@ -47,6 +47,7 @@ private:
     void onSet();
     void onCalRun();
     void onEventLog();
+    void onPause();
     void onClearLog();
     void onRecord();
     void onRecWav();

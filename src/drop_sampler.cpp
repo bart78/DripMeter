@@ -198,15 +198,18 @@ void DropSampler::run()
                 // Capture window complete: publish DropEvent and enter release holdoff.
                 if (now - capStartMs >= capLenMs)
                 {
-                    DropEvent ev;
-                    ev.epochUs = trigEpochUs;
-                    ev.peak    = peak;
-                    ev.envPeak = trigEnvPeak;
-                    if (_ring.push(ev))
+                    _lastPeak.store(peak, std::memory_order_relaxed);
+                    _lastEnvPeak.store(trigEnvPeak, std::memory_order_relaxed);
+                    if (!_paused.load(std::memory_order_relaxed))
                     {
-                        _lastEpochUs.store(trigEpochUs, std::memory_order_relaxed);
-                        _lastPeak.store(peak, std::memory_order_relaxed);
-                        _lastEnvPeak.store(trigEnvPeak, std::memory_order_relaxed);
+                        DropEvent ev;
+                        ev.epochUs = trigEpochUs;
+                        ev.peak    = peak;
+                        ev.envPeak = trigEnvPeak;
+                        if (_ring.push(ev))
+                        {
+                            _lastEpochUs.store(trigEpochUs, std::memory_order_relaxed);
+                        }
                     }
                     capturing  = false;
                     armed      = false;
@@ -265,7 +268,8 @@ void DropSampler::run()
                     struct timeval tv;
                     gettimeofday(&tv, nullptr);
                     trigEpochUs = (int64_t)tv.tv_sec * 1000000LL + tv.tv_usec;
-                    _triggers.fetch_add(1, std::memory_order_relaxed);
+                    if (!_paused.load(std::memory_order_relaxed))
+                        _triggers.fetch_add(1, std::memory_order_relaxed);
                 }
                 else if (!warmedUp || env <= thr || stuckInRelease)
                 {

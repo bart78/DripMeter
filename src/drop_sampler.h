@@ -48,6 +48,15 @@ public:
     uint16_t releaseMs()       const { return _releaseMs.load(std::memory_order_relaxed); }
     uint16_t refractoryMs()    const { return _refractoryMs.load(std::memory_order_relaxed); }
 
+    // --- Pause Data Gathering (Live Scope stays active) ---------------------
+    void     setPaused(bool p)
+    {
+        _paused.store(p, std::memory_order_relaxed);
+        if (p)
+            discardEvents();
+    }
+    bool     paused() const { return _paused.load(std::memory_order_relaxed); }
+
     // --- Water Quantity & In-Place Scale Calibration ------------------------
     void     setQtyEnabled(bool en)          { _qtyEnabled.store(en, std::memory_order_relaxed); }
     void     setUlPerDropTenths(uint16_t t)  { _ulPerDropTenths.store(t, std::memory_order_relaxed); }
@@ -153,6 +162,7 @@ private:
     std::atomic<uint16_t> _refractoryMs{REFRACTORY_MS};
 
     // Water quantity & calibration session state.
+    std::atomic<bool>     _paused{false};
     std::atomic<bool>     _qtyEnabled{DEFAULT_QTY_ENABLED != 0};
     std::atomic<uint16_t> _ulPerDropTenths{DEFAULT_UL_TENTHS};
     std::atomic<uint16_t> _calAvgEnvTenths{DEFAULT_CAL_ENV_TENTHS};
