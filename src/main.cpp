@@ -3,20 +3,20 @@
 //  Board: Guition JC3248W535 (ESP32-S3, 320x480 AXS15231B QSPI display)
 //
 //  Task layout:
-//    * drop_sampler task (core 1, prio 24) — tight ADC polling, never
-//      blocked by rendering; pushes DropEvents into an SPSC ring.
-//    * loopTask (core 1, prio 1) — drains the ring, appends to the CSV
-//      log, maintains Wi-Fi/NTP, and renders the dashboard on a 1 s
-//      cadence. No delay() anywhere.
+//    * drop_sampler task (core 1, prio 20) — dedicated ADC polling, never
+//      blocked by rendering or WiFi; pushes DropEvents into an SPSC ring.
+//    * loopTask (core 0, prio 1) — drains the ring, appends to the CSV
+//      log, maintains NTP, and renders the dashboard on a 1 s cadence.
+//    * drip_web task (core 0, prio 3) — serves the unified HTTP dashboard
+//      and calibration scope on port 80.
 //
-//  Data flow:   piezo -> ADC1_CH5 -> ring buffer -> LittleFS CSV + histogram
-//                                                                   -> canvas
+//  Data flow:   piezo -> ADC1_CH5 -> SPSC ring -> LittleFS CSV + histogram
+//                                                                 -> canvas
 // ============================================================================
 #include <Arduino.h>
 #include <WiFi.h>
 #include "esp_task_wdt.h"
 #include "esp_system.h"
-#include <Preferences.h>
 #include <atomic>
 
 #include "config.h"
@@ -66,57 +66,48 @@ static void onWifiEvent(WiFiEvent_t ev)
     }
 }
 
-// Loop liveness heartbeat for the status page (diagnostic).
+// Loop liveness heartbeat for /status.json (diagnostic).
 std::atomic<uint32_t> gLoopMs{0};
 
 // Last completed setup stage — rendered into the dashboard footer as
-// "SYS: <stage>" so a stuck boot names its failing stage on screen.
+// "SYS: <stage>" during boot so a stuck boot names its failing stage on screen.
 static char gStage[24] = "boot";
 static bool gFirstTimeSync = false;
 
 static void setStage(const char *s);
 
-// ---------------------------------------------------------------------------
-// Assemble the immutable snapshot handed to the renderer.
-// ---------------------------------------------------------------------------
 static DashSnapshot buildSnapshot()
 {
     DashSnapshot s;
 
-    s.timeValid = TimeService::localTime(s.now);
-    s.wifiUp    = gWifiUp.load();
-    s.wifiRssi  = (int8_t)gWifiRssi.load();
-    s.ntpOk     = TimeService::synced();
-    s.fsOk      = gLog.fsOk();
-    s.fsFreeBytes = gLog.totalBytes() - gLog.usedBytes();
+    s.timeValid    = TimeService::localTime(s.now);
+    s.wifiUp       = gWifiUp.load();
+    s.wifiRssi     = (int8_t)gWifiRssi.load();
+    s.ntpOk        = TimeService::synced();
+    s.fsOk         = gLog.fsOk();
+    s.fsFreeBytes  = gLog.totalBytes() - gLog.usedBytes();
     s.fsTotalBytes = gLog.totalBytes();
-    s.logOk     = gLog.ok();
+    s.logOk        = gLog.ok();
 
-    s.dropsToday = gHisto.anchored() ? gHisto.total() : 0;
-    s.histo      = &gHisto;
+    s.dropsToday   = gHisto.anchored() ? gHisto.total() : 0;
+    s.histo        = &gHisto;
 
     s.haveLastDrop    = (gSampler.lastDropEpochUs() != 0);
     s.lastDropEpochUs = gSampler.lastDropEpochUs();
     s.lastPeak        = gSampler.lastPeak();
 
-    s.liveRaw    = gSampler.rawADC();
-    s.envelope   = gSampler.envelope();
-    s.matchScore = gSampler.matchScore();
-    s.threshold  = gSampler.threshold();
+    s.liveRaw       = gSampler.rawADC();
+    s.envelope      = gSampler.envelope();
+    s.threshold     = gSampler.threshold();
     s.totalTriggers = gSampler.triggerCount();
-    s.sampleRate = gSampler.samplesPerSecond();
-    s.detectMode = gSampler.detectMode();
-    s.stage      = gStage;
+    s.sampleRate    = gSampler.samplesPerSecond();
+    s.stage         = gStage;
     s.ip[0] = 0;
     strlcpy(s.ip, gWifiIp, sizeof(s.ip));
 
     return s;
 }
 
-// ---------------------------------------------------------------------------
-// Boot-stage helper: every completed setup step is stamped into the footer
-// ("SYS: ..."), so a stuck boot names its failing stage on screen.
-// ---------------------------------------------------------------------------
 static void setStage(const char *s)
 {
     snprintf(gStage, sizeof(gStage), "%s", s);
@@ -124,7 +115,6 @@ static void setStage(const char *s)
     gUi.render(buildSnapshot());   // visible immediately, even mid-setup
 }
 
-// ---------------------------------------------------------------------------
 void setup()
 {
     // The default 5s task watchdog aborts during long one-time boot work
@@ -132,39 +122,27 @@ void setup()
     // liveness ourselves via loop_ms_ago in /status.json instead.
     esp_task_wdt_deinit();
 
-    // Boot diary: one line per boot with reset reason + previous run length
-    // (from the NVS heartbeat), so reboots can be diagnosed after the fact.
+    // Boot diary: one line per boot with reset reason so reboots can be
+    // diagnosed after the fact without continuous NVS flash wear.
     {
         const char *reason = "other";
         switch (esp_reset_reason())
         {
-        case ESP_RST_POWERON:  reason = "poweron"; break;
-        case ESP_RST_SW:       reason = "sw"; break;
-        case ESP_RST_PANIC:    reason = "panic"; break;
-        case ESP_RST_BROWNOUT: reason = "brownout"; break;
-        case ESP_RST_WDT:      reason = "wdt"; break;
+        case ESP_RST_POWERON:   reason = "poweron"; break;
+        case ESP_RST_SW:        reason = "sw"; break;
+        case ESP_RST_PANIC:     reason = "panic"; break;
+        case ESP_RST_BROWNOUT:  reason = "brownout"; break;
+        case ESP_RST_WDT:       reason = "wdt"; break;
         case ESP_RST_DEEPSLEEP: reason = "deepsleep"; break;
-        case ESP_RST_USB:      reason = "usb"; break;
+        case ESP_RST_USB:       reason = "usb"; break;
         default: break;
-        }
-        uint32_t prev = 0;
-        {
-            Preferences hp;
-            if (hp.begin("hb", true))
-            {
-                const uint32_t last = hp.getULong("beat", 0);
-                if (last)
-                    prev = (uint32_t)time(nullptr) > last ? (uint32_t)time(nullptr) - last : 0;
-                hp.end();
-            }
         }
         if (LittleFS.begin(false))
         {
             fs::File f = LittleFS.open("/bootlog.csv", FILE_APPEND);
             if (f)
             {
-                f.printf("%ld,%s,prev_run_s=%lu\n",
-                         (long)time(nullptr), reason, (unsigned long)prev);
+                f.printf("%ld,%s\n", (long)time(nullptr), reason);
                 f.close();
             }
             LittleFS.end();
@@ -181,12 +159,7 @@ void setup()
     Serial.println();
     Serial.println("=== DripMeter boot ===");
 
-    // --- 1. Piezo sensor (per hardware spec) -------------------------------
-    // Only the virtual ground is set up here. All ADC work (resolution,
-    // pin attach, attenuation) runs inside the sampler task — analogRead
-    // from this (UI) thread deadlocks the core on this core/BSP combo.
-    pinMode(PIN_PIEZO_GND, OUTPUT);
-    digitalWrite(PIN_PIEZO_GND, LOW);              // virtual ground
+    // --- 1. Piezo sensor (ADC setup runs inside sampler task on Core 1) ----
     setStage("piezo");
 
     // --- 2. Display backlight (LEDC PWM on GPIO1) --------------------------
@@ -207,22 +180,18 @@ void setup()
     TimeService::begin();
     setStage("ntp");
 
-    // --- 5. Storage ----------------------------------------------------------
+    // --- 5. Storage & Calibration --------------------------------------------
     gLog.begin();      // failure is non-fatal: sampling continues, CSV off
     setStage("storage");
 
-    // Learned drop template (matched-filter mode) + persisted calibration.
-    gSampler.templateStore().load();
-    gSampler.noiseStore().load();
     Tuning::load(gSampler);
     gLog.appendSettings(gSampler.margin(), gSampler.noiseMult(),
-                        gSampler.matchThr(), gSampler.matchMinRms(),
                         gSampler.refractoryMs(), gSampler.releaseMs(),
-                        gSampler.captureWindowMs(), gSampler.detectMode());
+                        gSampler.captureWindowMs());
 
     // --- 6. Wi-Fi -------------------------------------------------------------
     WiFi.setSleep(false);               // keep the radio responsive (SNTP)
-    WiFi.mode(WIFI_AP_STA);             // STA + always-on fallback hotspot:
+    WiFi.mode(WIFI_AP_STA);             // STA + always-on fallback hotspot
     WiFi.softAP("DripMeter", nullptr, 1, 0, 1);
     WiFi.setAutoReconnect(true);
     WiFi.onEvent(onWifiEvent);          // all further WiFi state via events
@@ -230,21 +199,19 @@ void setup()
     Serial.printf("[WIFI] connecting to \"%s\" ...\n", WIFI_SSID);
     Serial.printf("[WIFI] AP up: DripMeter @ %s\n",
                   WiFi.softAPIP().toString().c_str());
-    gWeb.begin();                       // /  /drops.csv  /status.json  /set
+    gWeb.begin();                       // unified dashboard on port 80
     setStage("wifi");
 
-    // --- 7. Sampler (task only; ADC pin config already staged above) --------
+    // --- 7. Sampler (dedicated Core 1 task) ----------------------------------
     gSampler.begin();
     setStage("running");
 
-    // The dashboard is already live from the staged renders above.
     gUi.render(buildSnapshot());
 }
 
-// ---------------------------------------------------------------------------
 void loop()
 {
-    // Loop liveness for the status page (see /status.json loop_ms_ago).
+    // Loop liveness for /status.json (loop_ms_ago).
     gLoopMs.store(millis(), std::memory_order_relaxed);
 
     // --- 1. Drain the sampler ring: log + histogram + prompt redraw --------
@@ -258,8 +225,8 @@ void loop()
             gHisto.record(tmv);          // buckets only while the clock is sane
 
         gUi.noteEvent();
-        DBG_PRINTF("[DROP] peak=%u epoch=%lld\n",
-                   ev.peak, (long long)ev.epochUs);
+        DBG_PRINTF("[DROP] peak=%u env=%u epoch=%lld\n",
+                   ev.peak, ev.envPeak, (long long)ev.epochUs);
     }
 
     // --- 2. Time maintenance + one-time histogram rebuild after first sync -
@@ -273,40 +240,26 @@ void loop()
         Serial.printf("[NTP] first sync OK (TZ=%s)\n", TZ_STRING);
     }
 
-    // --- 3. Wi-Fi: nothing to do here — state arrives via events (see
-    //        onWifiEvent); auto-reconnect is handled by the stack. The loop
-    //        must never block on WiFi APIs.
-
-    // --- 4. Histogram midnight rollover -------------------------------------
+    // --- 3. Histogram midnight rollover -------------------------------------
     {
         struct tm tmv;
         if (TimeService::localTime(tmv))
             gHisto.rolloverIfNeeded(tmv);
     }
 
-    // --- 5. Log compaction housekeeping --------------------------------------
+    // --- 4. Log compaction housekeeping --------------------------------------
     gLog.maintain();
 
-    // (Web requests are served by their own dedicated task — nothing to do
-    //  here, and no client stall can block this loop anymore.)
-
-    // --- 6. Render the dashboard on its cadence ------------------------------
+    // --- 5. Render the dashboard on its cadence ------------------------------
     gUi.renderIfDue(buildSnapshot());
 
-    // Heartbeat (diagnostic only; silent unless DRIPMETER_SERIAL_LOG).
+    // Optional serial diagnostic heartbeat (no NVS flash writes in loop!).
+#if DRIPMETER_SERIAL_LOG
     {
         static uint32_t lastBeat = 0;
         if (millis() - lastBeat >= 5000)
         {
             lastBeat = millis();
-            {
-                Preferences hp;
-                if (hp.begin("hb", false))
-                {
-                    hp.putULong("beat", (uint32_t)time(nullptr));
-                    hp.end();
-                }
-            }
             DBG_PRINTF("[ALIVE] up=%lus heap=%u raw=%u env=%u thr=%u drops=%lu\n",
                        (unsigned long)(millis() / 1000),
                        ESP.getFreeHeap(),
@@ -314,7 +267,7 @@ void loop()
                        (unsigned long)gSampler.triggerCount());
         }
     }
+#endif
 
-    // Loop yields a tick; the sampler preempts it at priority 24 anyway.
     vTaskDelay(pdMS_TO_TICKS(1));
 }

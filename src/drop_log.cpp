@@ -8,7 +8,6 @@
 #include <math.h>
 #include <stdlib.h>
 
-// ---------------------------------------------------------------------------
 bool DropLog::begin()
 {
     // LittleFS.begin(true) formats the partition on first boot.
@@ -32,6 +31,7 @@ bool DropLog::begin()
     if (_size > 0)
     {
         bool torn = false;
+        uint32_t existingCfgCount = 0;
         fs::File chk = LittleFS.open(LOG_PATH, "r");
         if (chk)
         {
@@ -39,8 +39,20 @@ bool DropLog::begin()
             uint8_t last = 0;
             if (chk.read(&last, 1) == 1 && last != '\n')
                 torn = true;
+            else
+            {
+                chk.seek(0);
+                while (chk.available())
+                {
+                    String l = chk.readStringUntil('\n');
+                    if (l.startsWith("#cfg,"))
+                        ++existingCfgCount;
+                }
+            }
             chk.close();
         }
+        _cfgVersion = existingCfgCount;
+
         if (torn)
         {
             _file.close();
@@ -49,6 +61,7 @@ bool DropLog::begin()
             snprintf(bad, sizeof(bad), "/drops_bad_%ld.csv", (long)time(nullptr));
             LittleFS.rename(LOG_PATH, bad);
             Serial.printf("[FS] quarantined torn log as %s\n", bad);
+            _cfgVersion = 0;
             reopen();
         }
     }
@@ -59,19 +72,19 @@ bool DropLog::begin()
         _file.print(LOG_HEADER);
         _file.print('\n');
         _file.flush();
-        _size = _file.size();
+        _size  = _file.size();
         _lines = 1;     // the header row
         Serial.println("[FS] created " LOG_PATH " with header");
     }
     else
     {
-        Serial.printf("[FS] opened %s (%u bytes)\n", LOG_PATH, (unsigned)_size);
+        Serial.printf("[FS] opened %s (%u bytes, %lu cfg entries)\n",
+                      LOG_PATH, (unsigned)_size, (unsigned long)_cfgVersion);
     }
 
     return true;
 }
 
-// ---------------------------------------------------------------------------
 void DropLog::reopen()
 {
     _file = LittleFS.open(LOG_PATH, FILE_APPEND);
@@ -80,7 +93,6 @@ void DropLog::reopen()
         _size = _file.size();
 }
 
-// ---------------------------------------------------------------------------
 bool DropLog::append(const DropEvent &ev)
 {
     if (!_open)
@@ -96,9 +108,9 @@ bool DropLog::append(const DropEvent &ev)
     const int64_t sec  = ev.epochUs / 1000000LL;
     const int64_t msec = (ev.epochUs % 1000000LL) / 1000LL;
 
-    _file.printf("%s,%lld.%03lld,%u,%u,%u\n", iso,
+    _file.printf("%s,%lld.%03lld,%u,%u\n", iso,
                  (long long)sec, (long long)msec,
-                 (unsigned)ev.peak, (unsigned)ev.envPeak, (unsigned)ev.match);
+                 (unsigned)ev.peak, (unsigned)ev.envPeak);
     _file.flush();          // persist before acknowledging the event
     _size  = _file.size();
     ++_lines;
@@ -106,33 +118,23 @@ bool DropLog::append(const DropEvent &ev)
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// Settings snapshot: '#cfg,v<N>,<epoch>,margin=..,...' — events are matched
-// to their producing config by taking the latest line with epoch <= the
-// event's epoch. The version tag makes eyeballing easier.
-// ---------------------------------------------------------------------------
-void DropLog::appendSettings(uint16_t margin, uint8_t nmult, uint16_t mthr,
-                             uint8_t mrm, uint16_t refr, uint16_t rel,
-                             uint16_t cap, uint8_t mode)
+void DropLog::appendSettings(uint16_t margin, uint8_t nmult,
+                             uint16_t refr, uint16_t rel, uint16_t cap)
 {
     if (!_open)
         return;
-    static uint32_t cfgVersion = 0;
-    ++cfgVersion;
+    ++_cfgVersion;
 
-    _file.printf("#cfg,v%lu,%lld,margin=%u,nmult=%u,mthr=%u,mrm=%u,"
-                 "refr=%u,rel=%u,cap=%u,mode=%u\n",
-                 (unsigned long)cfgVersion,
+    _file.printf("#cfg,v%lu,%lld,margin=%u,nmult=%u,refr=%u,rel=%u,cap=%u\n",
+                 (unsigned long)_cfgVersion,
                  (long long)time(nullptr),
-                 (unsigned)margin, (unsigned)nmult, (unsigned)mthr,
-                 (unsigned)mrm, (unsigned)refr, (unsigned)rel,
-                 (unsigned)cap, (unsigned)mode);
+                 (unsigned)margin, (unsigned)nmult,
+                 (unsigned)refr, (unsigned)rel, (unsigned)cap);
     _file.flush();
     _size  = _file.size();
     ++_lines;
 }
 
-// ---------------------------------------------------------------------------
 uint32_t DropLog::rebuildToday(Histogram &h, const struct tm &today)
 {
     if (!_open)
@@ -144,8 +146,8 @@ uint32_t DropLog::rebuildToday(Histogram &h, const struct tm &today)
         time_t ydayT = (time_t)0;
         struct tm tt = today;
         tt.tm_hour = 12;                        // avoid DST edge effects
-        tt.tm_min = 0;
-        tt.tm_sec = 0;
+        tt.tm_min  = 0;
+        tt.tm_sec  = 0;
         ydayT = mktime(&tt) - 86400;
         localtime_r(&ydayT, &ydayTm);
     }
@@ -159,8 +161,11 @@ uint32_t DropLog::rebuildToday(Histogram &h, const struct tm &today)
 
     // Stream the file line by line — constant RAM regardless of size.
     String line;
+    uint32_t lineNum = 0;
     while (rd.available())
     {
+        if ((++lineNum & 0xFF) == 0)
+            yield();
         line = rd.readStringUntil('\n');
         if (line.length() < 3 || line[0] == '#')
             continue;                       // header / junk
@@ -201,7 +206,6 @@ uint32_t DropLog::rebuildToday(Histogram &h, const struct tm &today)
     return matched;
 }
 
-// ---------------------------------------------------------------------------
 void DropLog::maintain()
 {
     if (!_open || !_fsOk)
@@ -220,14 +224,13 @@ void DropLog::maintain()
 
     _lastCompactMs = now;
     DBG_PRINTF("[FS] compacting %s (%u bytes, %u free)...\n",
-                  LOG_PATH, (unsigned)_size, (unsigned)freeBytes);
+               LOG_PATH, (unsigned)_size, (unsigned)freeBytes);
     if (compact())
         DBG_PRINTLN("[FS] compaction done");
     else
         DBG_PRINTLN("[FS] compaction FAILED (log left untouched)");
 }
 
-// ---------------------------------------------------------------------------
 bool DropLog::clearLog()
 {
     if (_open)
@@ -240,6 +243,7 @@ bool DropLog::clearLog()
         reopen();
         return false;
     }
+    _cfgVersion = 0;
     reopen();
     if (_open)
     {
@@ -253,10 +257,6 @@ bool DropLog::clearLog()
     return _open;
 }
 
-// ---------------------------------------------------------------------------
-// Copy the header plus the newest LOG_KEEP_FRACTION of all lines into a
-// temporary file, then atomically swap it into place. If anything fails the
-// original file is left untouched.
 bool DropLog::compact()
 {
     const char *tmpPath = "/drops.tmp";
@@ -267,8 +267,11 @@ bool DropLog::compact()
         fs::File rd = LittleFS.open(LOG_PATH, "r");
         if (!rd)
             return false;
+        uint32_t lineNum = 0;
         while (rd.available())
         {
+            if ((++lineNum & 0xFF) == 0)
+                yield();
             String line = rd.readStringUntil('\n');
             if (line.length() >= 3 && line[0] != '#')
                 ++dataLines;
@@ -294,14 +297,33 @@ bool DropLog::compact()
     }
 
     uint32_t seen = 0;
+    uint32_t lineNum = 0;
+    String lastSkippedCfg;
+    bool wroteLastSkippedCfg = false;
     while (rd.available())
     {
+        if ((++lineNum & 0xFF) == 0)
+            yield();
         String line = rd.readStringUntil('\n');
-        if (line.length() >= 3 && line[0] != '#')
+        if (line.startsWith("#cfg,"))
+        {
+            if (seen < skipLines)
+            {
+                lastSkippedCfg = line;
+                continue;
+            }
+        }
+        else if (line.length() >= 3 && line[0] != '#')
         {
             ++seen;
             if (seen <= skipLines)
                 continue;
+            if (!wroteLastSkippedCfg && lastSkippedCfg.length() > 0)
+            {
+                wr.print(lastSkippedCfg);
+                wr.print('\n');
+                wroteLastSkippedCfg = true;
+            }
         }
         wr.print(line);
         wr.print('\n');

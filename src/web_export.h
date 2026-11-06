@@ -1,16 +1,17 @@
 // ============================================================================
-//  web_export.h — tiny HTTP server: status page + calibration bench + data
+//  web_export.h — HTTP server: unified dashboard + collapsible tuning scope
 //
-//    GET /            status display: live stats + 24h histogram chart
-//                     (today solid, yesterday dimmed) with a "now" marker
-//    GET /cal         calibration bench: live RAW/ENV/MATCH/THR levels,
-//                     tuning form, drop-template record/forget
-//    GET /drops.csv   the full append-only log (streamed, chunked)
+//    GET /            unified single-page dashboard: live KPIs, 24h histogram,
+//                     WAV recorder controls, and collapsible live signal scope
+//                     + visual tuning bench
+//    GET /cal         redirects to /#tuning for bookmark compatibility
+//    GET /drops.csv   the full append-only CSV log (streamed)
 //    GET /status.json machine-readable snapshot incl. histogram arrays
-//
-//  Served from the loop task via server.handleClient() — non-blocking, and
-//  the sampler task (higher priority) keeps catching drops even while a
-//  CSV download is streaming.
+//    GET /stream.json compact 512-point peak-held envelope + state stream
+//    GET /set         apply + persist calibration parameters
+//    GET /record      save rolling 60s PSRAM audio ring to /rec.wav
+//    GET /rec.wav     download saved WAV recording
+//    GET /clearlog    wipe /drops.csv and reset today's histogram
 // ============================================================================
 #pragma once
 
@@ -33,25 +34,15 @@ public:
     }
 
 private:
-    static void taskEntry(void *arg);   // dedicated server task
+    static void taskEntry(void *arg);   // dedicated server task (Core 0)
     void onRoot();
-    void onCal();
     void onCsv();
     void onStatus();
     void onStream();
     void onSet();
-    void onLearn();
-    void onLearnNoise();
-    void onForget();
-    void onForgetNoise();
     void onClearLog();
-    void onAutoCal();
-    void onCalDump();
     void onRecord();
     void onRecWav();
-    void onUploadTemplate();
-    void onUploadNoise();
-    void onLearnPick();
 
     // Shared helpers.
     void histogramSVG(String &out, uint8_t nowIdx);

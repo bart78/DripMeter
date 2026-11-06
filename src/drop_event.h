@@ -1,10 +1,10 @@
 // ============================================================================
 //  drop_event.h — event payload + lock-free SPSC ring buffer
 //
-//  The ADC sampler task (producer, core 1, priority 24) pushes DropEvent
-//  records here; the application loop (consumer) drains them. A screen
-//  redraw may take tens of milliseconds, so events are buffered instead of
-//  being processed inline — no drop transient is lost to rendering work.
+//  The ADC sampler task (producer, core 1, priority 20) pushes DropEvent
+//  records here; the application loop (consumer, core 0) drains them.
+//  Screen redraws and file writes never block the sampler — no drop transient
+//  is lost to rendering or I/O work.
 //
 //  Correctness notes:
 //    * Capacity must be a power of two; indices wrap with a bitmask.
@@ -23,9 +23,8 @@
 struct DropEvent
 {
     int64_t  epochUs;   // trigger instant, microseconds since Unix epoch (UTC)
-    uint16_t peak;      // peak raw ADC reading within the capture window
-    uint16_t envPeak;   // peak envelope during the capture window
-    uint16_t match;     // correlation score at the trigger (0..999)
+    uint16_t peak;      // peak raw ADC reading within the trigger + capture window
+    uint16_t envPeak;   // peak AC-RMS envelope during the capture window
 };
 
 template <typename T, size_t N>

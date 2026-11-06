@@ -52,9 +52,6 @@ static const uint8_t *const F_TINY  = u8g2_font_6x10_tf;       // footer
 #define HOUR_LABEL_Y   458
 #define FOOTER_Y       468
 
-// ---------------------------------------------------------------------------
-// begin()
-// ---------------------------------------------------------------------------
 bool Dashboard::begin()
 {
     // Fixed QSPI wiring of the JC3248W535 (CS, SCK, D0..D3).
@@ -88,9 +85,6 @@ bool Dashboard::begin()
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// Redraw scheduling
-// ---------------------------------------------------------------------------
 void Dashboard::noteEvent()
 {
     _eventPending = true;
@@ -115,9 +109,6 @@ void Dashboard::renderIfDue(const DashSnapshot &s)
     }
 }
 
-// ---------------------------------------------------------------------------
-// Full redraw into the canvas, then one frame push.
-// ---------------------------------------------------------------------------
 void Dashboard::render(const DashSnapshot &s)
 {
     if (!_ok)
@@ -130,9 +121,6 @@ void Dashboard::render(const DashSnapshot &s)
     _gfx->flush();
 }
 
-// ---------------------------------------------------------------------------
-// Text helpers (u8g2 font metrics through a throwaway decoder context)
-// ---------------------------------------------------------------------------
 uint8_t Dashboard::fontAscent(const uint8_t *font)
 {
     u8g2_t u8g2;
@@ -170,9 +158,6 @@ void Dashboard::textCenter(int16_t cx, int16_t yTop, const uint8_t *font,
     textTop(cx - strWidth(font, s) / 2, yTop, font, color, s);
 }
 
-// ---------------------------------------------------------------------------
-// 1) Status bar: local clock + date, Wi-Fi/IP, NTP state, storage remaining
-// ---------------------------------------------------------------------------
 void Dashboard::drawStatusBar(const DashSnapshot &s)
 {
     char buf[48];
@@ -214,9 +199,6 @@ void Dashboard::drawStatusBar(const DashSnapshot &s)
     textRight(312, 24, F_SMALL, C_DIM, buf);
 }
 
-// ---------------------------------------------------------------------------
-// 2) Stats row: today's count, time since last impact, last peak amplitude
-// ---------------------------------------------------------------------------
 void Dashboard::drawStats(const DashSnapshot &s)
 {
     char buf[32];
@@ -277,9 +259,6 @@ void Dashboard::drawStats(const DashSnapshot &s)
     }
 }
 
-// ---------------------------------------------------------------------------
-// 3) 24-hour histogram, BUCKET_MINUTES-minute buckets, with a "now" marker
-// ---------------------------------------------------------------------------
 void Dashboard::drawHistogram(const DashSnapshot &s)
 {
     char buf[40];
@@ -366,31 +345,24 @@ void Dashboard::drawHistogram(const DashSnapshot &s)
     }
 }
 
-// ---------------------------------------------------------------------------
-// 4) Footer: live telemetry strip + last setup stage (stuck-boot diagnostic)
-// ---------------------------------------------------------------------------
 void Dashboard::drawFooter(const DashSnapshot &s)
 {
     char buf[64];
-    const char *modeTag;
-    switch (s.detectMode)
+    if (s.sampleRate > 0)
     {
-    case 1: modeTag = "MATCH"; break;
-    case 2: modeTag = "BOTH"; break;
-    case 3: modeTag = "EITHER"; break;
-    default: modeTag = "ENV"; break;
-    }
-    if (s.detectMode == 0)
         snprintf(buf, sizeof(buf),
-                 "RAW %u  ENV %u  THR %u  TRIG %lu  %s:%s",
+                 "RAW %u  ENV %u / THR %u  TRIG %lu  %.1fkHz",
                  (unsigned)s.liveRaw, (unsigned)s.envelope,
                  (unsigned)s.threshold, (unsigned long)s.totalTriggers,
-                 modeTag, s.stage ? s.stage : "?");
+                 (float)s.sampleRate / 1000.0f);
+    }
     else
+    {
         snprintf(buf, sizeof(buf),
-                 "RAW %u  M %u/%u  TRIG %lu  %s:%s",
-                 (unsigned)s.liveRaw, (unsigned)s.matchScore,
+                 "RAW %u  ENV %u / THR %u  TRIG %lu  SYS:%s",
+                 (unsigned)s.liveRaw, (unsigned)s.envelope,
                  (unsigned)s.threshold, (unsigned long)s.totalTriggers,
-                 modeTag, s.stage ? s.stage : "?");
+                 s.stage ? s.stage : "?");
+    }
     textTop(PLOT_X0, FOOTER_Y, F_TINY, C_DIM, buf);
 }

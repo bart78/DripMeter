@@ -4,8 +4,8 @@
 //  Every accepted drop impact is appended (and flushed — power-loss safe at
 //  the file level) to /drops.csv:
 //
-//      ISO_Timestamp,Epoch,PeakADC
-//      2026-10-29T21:14:05+0100,1761755525.123,2341
+//      ISO_Timestamp,Epoch,PeakADC,EnvPeak
+//      2026-11-06T12:07:45+0900,1793934465.801,171,40
 //
 //  The file is the single source of truth: it survives resets, and at boot
 //  it is replayed to rebuild today's on-screen histogram. When the file
@@ -34,9 +34,8 @@ public:
 
     // Append a settings snapshot line ('#cfg,...') so any later analysis
     // knows which configuration produced the surrounding data.
-    void appendSettings(uint16_t margin, uint8_t nmult, uint16_t mthr,
-                        uint8_t mrm, uint16_t refr, uint16_t rel,
-                        uint16_t cap, uint8_t mode);
+    void appendSettings(uint16_t margin, uint8_t nmult,
+                        uint16_t refr, uint16_t rel, uint16_t cap);
 
     // Replay the log and rebuild the histogram for the given local date:
     // today's counts plus yesterday's (the dim comparison layer).
@@ -50,10 +49,10 @@ public:
     // clean measurement session.
     bool clearLog();
 
-    bool   fsOk()       const { return _fsOk; }
-    bool   ok()         const { return _open; }
-    size_t fileSize()   const { return _size; }
-    uint32_t lineCount() const { return _lines; }
+    bool     fsOk()       const { return _fsOk; }
+    bool     ok()         const { return _open; }
+    size_t   fileSize()   const { return _size; }
+    uint32_t lineCount()  const { return _lines; }
 
     // LittleFS capacity figures for the status bar.
     size_t usedBytes()  const { return _fsOk ? LittleFS.usedBytes()  : 0; }
@@ -64,9 +63,10 @@ private:
     bool compact();
 
     fs::File _file;
-    bool     _fsOk  = false;
-    bool     _open  = false;
-    size_t   _size  = 0;
-    uint32_t _lines = 0;
+    bool     _fsOk       = false;
+    bool     _open       = false;
+    size_t   _size       = 0;
+    uint32_t _lines      = 0;
+    uint32_t _cfgVersion = 0;
     uint32_t _lastCompactMs = 0;
 };

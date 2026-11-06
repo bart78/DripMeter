@@ -37,11 +37,9 @@ struct DashSnapshot
     uint16_t      lastPeak = 0;
     uint16_t      liveRaw = 0;
     uint16_t      envelope = 0;
-    uint16_t      matchScore = 0;
     uint16_t      threshold = 0;
     uint32_t      totalTriggers = 0;
     uint32_t      sampleRate = 0;
-    uint8_t       detectMode = 0;
     const char   *stage = "boot";     // last completed setup stage
 };
 
@@ -95,5 +93,4 @@ private:
     uint32_t _lastRenderMs = 0;
     uint32_t _lastEventMs  = 0;
     bool     _eventPending = false;
-    uint8_t  _bootStageLine = 0;   // splash progress line counter
 };

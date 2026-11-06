@@ -1,8 +1,8 @@
 // ============================================================================
-//  tuning.h — persistent sensitivity calibration (NVS-backed)
+//  tuning.h — persistent sensitivity & timing calibration (NVS-backed)
 //
-//  The detection margin / noise multiplier are runtime-tunable (via the web
-//  page) and survive reboots via Preferences (NVS).
+//  The 5 envelope detection knobs are runtime-tunable via the web page and
+//  survive reboots via Preferences (NVS).
 // ============================================================================
 #pragma once
 
