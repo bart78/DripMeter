@@ -1,9 +1,10 @@
 # DripMeter — Product & Engineering Roadmap (To-Do)
 
-This document captures the design and implementation plan for the next three stages of **DripMeter**:
+This document captures the design and implementation plan for the next four stages of **DripMeter**:
 1. **Water Quantity & Droplet Volume Flow** (Calibration UI, per-drop $\mu\text{L}$ logging, and rolling volume trends)
 2. **Cloud Portal & AI Pattern Analysis** (Firebase backend, remote tuning & scope, and Gemini diagnostic engine)
 3. **Zero-Code Wi-Fi & Cloud Onboarding** (On-screen QR code + captive portal setup)
+4. **Multi-Device Fleet & Customer Job-Site View** (Fleet overview grid, job-site assignment, and post-repair zero-drop verification)
 
 ---
 
@@ -102,3 +103,26 @@ Removes hardcoded Wi-Fi credentials from `src/config.h` and provides a consumer-
   - Scans and lists nearby 2.4 GHz Wi-Fi networks with signal-strength bars (`WiFi.scanNetworks()`).
   - Lets the user tap their network, enter the password, and optionally enter/scan a Cloud Portal pairing code.
   - Tests the connection while keeping the setup portal alive, displays the newly assigned LAN IP (`http://192.168.0.XX`) and Cloud Portal link, persists credentials to NVS, and switches to normal monitoring.
+
+---
+
+## 4. Multi-Device Fleet & Customer Job-Site View ("Leave-Behind" Fleet Mode)
+
+Structure the Firebase/Firestore data model (`devices/{deviceId}` + `jobs/{jobId}`) from day one so the Cloud Portal naturally scales from 1 sensor to a fleet of leave-behind diagnostic units across customer sites.
+
+### A. Multi-Customer Fleet Overview Dashboard
+- [ ] **Live Fleet Grid (`/fleet`):**
+  - Displays all registered DripMeter units with real-time status badges:
+    - **Verified Dry (`0 drops in 48h/72h ✓`)** — Post-repair confirmation ready for pickup or drywall close-up.
+    - **Active / Diagnosed (`e.g., 13.1m Periodic Cycle · 88 mL/24h`)** — AI pattern classification ready for technician review.
+    - **Escalating (`▲ +35% vs prev 24h`)** — Priority alert when a leak accelerates.
+    - **Offline / Low Signal** — Last seen timestamp and Wi-Fi RSSI warning.
+  - Shows customer/site name, location notes (e.g., *"Apt 4B — Kitchen Ceiling"*), time since last drop, 24h volume (`mL`), and AI headline diagnosis on each card.
+  - One click drills down into that unit's full single-device dashboard (KPIs, 24h histogram, AI hour-by-hour analysis, tuning knobs, and on-demand Live Signal Scope).
+
+### B. Reusable Hardware / Job-Site Assignment Lifecycle
+- [ ] **Device Check-In / Check-Out (`jobs/{jobId}`):**
+  - Allow a technician to assign a physical DripMeter unit (`deviceId`, e.g., ESP32 MAC) to a new customer/job site during QR onboarding without mingling historical drop data from the unit's previous job.
+- [ ] **Exportable Diagnostic & "Zero-Drop Certification" Report:**
+  - One-click PDF/printable summary of a deployment window showing total drops, volume curve, AI root-cause diagnosis (pre-repair), or a verified 72-hour zero-drop log (post-repair sign-off for homeowners/insurers).
+
