@@ -132,6 +132,8 @@
 // ---------------------------------------------------------------------------
 #define LOG_PATH                "/drops.csv"
 #define LOG_HEADER              "ISO_Timestamp,Epoch,PeakADC,EnvPeak,Volume_uL"
+#define EVENT_LOG_PATH          "/events.csv"
+#define EVENT_LOG_HEADER        "StartISO,StartEpoch,EndEpoch,Label,Note"
 #define LOG_MAX_BYTES           (3UL * 1024UL * 1024UL)  // ~90 days @ 1 drop/min
 #define LOG_MIN_FREE_BYTES      (512UL * 1024UL)         // compact when tight
 #define LOG_KEEP_FRACTION       0.66f                    // keep newest 2/3

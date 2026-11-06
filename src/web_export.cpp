@@ -58,9 +58,9 @@ namespace
     background: var(--bg-page);
     color: var(--text-main);
     margin: 0;
-    padding-block: 1rem 2.5rem;
-    padding-inline: 1rem;
-    line-height: 1.45;
+    padding-block: 0.55rem 1.8rem;
+    padding-inline: 0.7rem;
+    line-height: 1.35;
   }
   main, header {
     max-width: 820px;
@@ -85,34 +85,34 @@ namespace
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
-    padding-block-end: 0.85rem;
-    margin-block-end: 1rem;
+    gap: 0.45rem;
+    padding-block-end: 0.5rem;
+    margin-block-end: 0.55rem;
     border-block-end: 1px solid var(--border-subtle);
   }
   .brand {
     display: flex;
     align-items: baseline;
-    gap: 0.6rem;
+    gap: 0.5rem;
   }
   .brand h1 {
-    font-size: 1.35rem;
+    font-size: 1.15rem;
   }
   .brand-sub {
-    font-size: 0.85rem;
+    font-size: 0.78rem;
     color: var(--text-muted);
     font-family: var(--font-mono);
   }
   .pills {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.45rem;
+    gap: 0.35rem;
     align-items: center;
   }
   .pill {
     font-family: var(--font-mono);
-    font-size: 0.78rem;
-    padding: 0.25rem 0.6rem;
+    font-size: 0.72rem;
+    padding: 0.18rem 0.5rem;
     border-radius: 999px;
     background: var(--bg-card);
     border: 1px solid var(--border-subtle);
@@ -135,98 +135,111 @@ namespace
   }
   .kpi-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
-    gap: 0.75rem;
-    margin-block-end: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+    gap: 0.45rem;
+    margin-block-end: 0.55rem;
   }
   .card {
     background: var(--bg-card);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    padding: 0.9rem 1rem;
+    padding: 0.55rem 0.75rem;
   }
   .kpi-label {
-    font-size: 0.75rem;
+    font-size: 0.68rem;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.05em;
     color: var(--text-muted);
-    margin-block-end: 0.25rem;
+    margin-block-end: 0.12rem;
   }
   .kpi-val {
     font-family: var(--font-mono);
-    font-size: 1.65rem;
+    font-size: 1.32rem;
     font-weight: 700;
     color: var(--text-main);
-    line-height: 1.15;
+    line-height: 1.1;
   }
   .kpi-accent {
     color: var(--accent-cyan);
   }
   .kpi-sub {
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     color: var(--text-muted);
-    margin-block-start: 0.3rem;
+    margin-block-start: 0.18rem;
     font-family: var(--font-mono);
   }
   .sec-head {
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
-    align-items: baseline;
-    gap: 0.5rem;
-    margin-block-end: 0.65rem;
+    align-items: center;
+    gap: 0.4rem;
+    margin-block-end: 0.4rem;
   }
   .sec-head h2 {
-    font-size: 1rem;
+    font-size: 0.92rem;
   }
   .legend {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.85rem;
-    font-size: 0.78rem;
+    gap: 0.25rem 0.65rem;
+    font-size: 0.72rem;
     color: var(--text-muted);
     font-family: var(--font-mono);
+    line-height: 1.25;
   }
   .dot {
     display: inline-block;
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 2px;
-    margin-inline-end: 4px;
+    margin-inline-end: 3px;
     vertical-align: middle;
   }
   .toolbar {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
+    flex-wrap: nowrap;
+    gap: 0.4rem;
     align-items: center;
-    margin-block-start: 0.8rem;
-    padding-block-start: 0.75rem;
+    margin-block-start: 0.45rem;
+    padding-block-start: 0.45rem;
     border-block-start: 1px solid var(--border-subtle);
+  }
+  .sel {
+    font-family: var(--font-sans);
+    font-size: 0.8rem;
+    min-height: 34px;
+    padding-inline: 0.5rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-input);
+    color: var(--text-main);
+    max-width: 190px;
   }
   .btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.35rem;
+    gap: 0.3rem;
     font-family: var(--font-sans);
-    font-size: 0.88rem;
+    font-size: 0.8rem;
     font-weight: 550;
-    min-height: 40px;
-    padding-inline: 0.85rem;
+    min-height: 34px;
+    padding-inline: 0.65rem;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-subtle);
     background: var(--bg-elevated);
     color: var(--text-main);
     cursor: pointer;
     text-decoration: none;
+    white-space: nowrap;
   }
   .btn:hover:not(:disabled) {
     border-color: var(--accent-cyan);
     background: #222b3d;
     text-decoration: none;
   }
-  .btn:focus-visible, input:focus-visible, summary:focus-visible {
+  .btn:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
     outline: 2px solid var(--border-focus);
     outline-offset: 2px;
   }
@@ -242,25 +255,25 @@ namespace
     border-color: var(--accent-red);
     background: rgba(244, 63, 94, 0.14);
   }
-  /* Collapsible Tuning Disclosure */
+  /* Collapsible Disclosure Tabs */
   details.tuning-drawer {
     background: var(--bg-card);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    margin-block-start: 1rem;
+    margin-block-start: 0.55rem;
     overflow: hidden;
   }
   details.tuning-drawer > summary {
     list-style: none;
     cursor: pointer;
-    padding: 0.95rem 1.1rem;
+    padding: 0.6rem 0.85rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
+    gap: 0.5rem;
     background: var(--bg-elevated);
     font-weight: 600;
-    font-size: 1rem;
+    font-size: 0.9rem;
     user-select: none;
   }
   details.tuning-drawer > summary::-webkit-details-marker {
@@ -269,10 +282,10 @@ namespace
   details.tuning-drawer > summary::after {
     content: "Show Knobs ▾";
     font-family: var(--font-mono);
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     font-weight: 500;
     color: var(--accent-cyan);
-    padding: 0.25rem 0.6rem;
+    padding: 0.18rem 0.5rem;
     border-radius: var(--radius-sm);
     border: 1px solid rgba(56, 189, 248, 0.3);
     background: rgba(56, 189, 248, 0.08);
@@ -284,17 +297,23 @@ namespace
     content: "Hide Knobs ▴";
   }
   details.qty-drawer > summary::after {
-    content: "Configure & Calibrate ▾";
+    content: "Calibrate ▾";
   }
   details.qty-drawer[open] > summary::after {
-    content: "Hide Calibration ▴";
+    content: "Hide ▴";
+  }
+  details.pat-drawer > summary::after {
+    content: "Baseline & Log ▾";
+  }
+  details.pat-drawer[open] > summary::after {
+    content: "Hide ▴";
   }
   .tuning-body {
-    padding: 1rem 1.1rem;
+    padding: 0.75rem 0.85rem;
   }
   .scope-wrap {
     position: relative;
-    margin-block-end: 1rem;
+    margin-block-end: 0.45rem;
   }
   canvas#scope-cv {
     width: 100%;
@@ -309,6 +328,65 @@ namespace
   canvas#scope-cv.unlocked {
     touch-action: none;
     cursor: ns-resize;
+  }
+  /* Responsive sticky tables for Pattern Baseline & Event Logger */
+  .table-wrapper {
+    overflow: auto;
+    max-inline-size: 100%;
+    max-block-size: min(260px, 50vh);
+    container-type: inline-size;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    background: var(--bg-input);
+    margin-block-top: 0.45rem;
+  }
+  .table-wrapper table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    text-align: left;
+  }
+  .table-wrapper caption {
+    text-align: left;
+    padding: 0.35rem 0.55rem;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 0.78rem;
+    color: var(--accent-cyan);
+    background: var(--bg-elevated);
+    border-block-end: 1px solid var(--border-subtle);
+  }
+  .table-wrapper thead {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 2;
+    background: var(--bg-elevated);
+  }
+  .table-wrapper th, .table-wrapper td {
+    padding: 0.32rem 0.5rem;
+    border-block-end: 1px solid var(--border-subtle);
+    white-space: nowrap;
+  }
+  .table-wrapper tbody th {
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: 1;
+    background: var(--bg-card);
+    color: var(--text-main);
+    font-weight: 600;
+  }
+  .ev-text {
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    min-height: 34px;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-card);
+    color: var(--text-main);
+    box-sizing: border-box;
   }
   .cal-steps {
     margin: 0.5rem 0 0.85rem 1.2rem;
@@ -503,10 +581,12 @@ void WebExport::begin()
         _server.send(302, "text/plain", "");
     });
     _server.on("/drops.csv", HTTP_GET, [this]() { onCsv(); });
+    _server.on("/events.csv", HTTP_GET, [this]() { onEventsCsv(); });
     _server.on("/status.json", HTTP_GET, [this]() { onStatus(); });
     _server.on("/stream.json", HTTP_GET, [this]() { onStream(); });
     _server.on("/set", HTTP_GET, [this]() { onSet(); });
     _server.on("/calrun", HTTP_GET, [this]() { onCalRun(); });
+    _server.on("/eventlog", HTTP_GET, [this]() { onEventLog(); });
     _server.on("/clearlog", HTTP_GET, [this]() { onClearLog(); });
     _server.on("/record", HTTP_GET, [this]() { onRecord(); });
     _server.on("/rec.wav", HTTP_GET, [this]() { onRecWav(); });
@@ -669,7 +749,7 @@ void WebExport::onRoot()
     histogramSVG(svg, nowIdx);
 
     String page;
-    page.reserve(24576);
+    page.reserve(30720);
     page += "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
             "<title>DripMeter</title>";
@@ -769,25 +849,98 @@ void WebExport::onRoot()
     // --- 24h Histogram Card ------------------------------------------------
     page += "<section class='card' aria-label='24-hour distribution'>"
             "<div class='sec-head'>"
-            "<h2>24-Hour Drop Distribution (15-min buckets)</h2>"
+            "<h2>24-Hour Drop Distribution (15m)</h2>"
             "<div class='legend'>"
             "<span><i class='dot' style='background:#0284c7'></i>Today</span>"
-            "<span><i class='dot' style='background:#38bdf8'></i>Current bucket</span>"
-            "<span><i class='dot' style='background:#2b384e'></i>Yesterday</span>"
+            "<span><i class='dot' style='background:#38bdf8'></i>Now bucket</span>"
+            "<span><i class='dot' style='background:#2b384e'></i>Yday</span>"
             "<span><i class='dot' style='background:#f43f5e'></i>Now</span>"
             "</div></div>"
             "<div id='histo-box'>";
     page += svg;
     page += "</div>"
             "<div class='toolbar'>"
-            "<a class='btn' href='/drops.csv'>Download drops.csv</a>"
-            "<a class='btn' href='/status.json'>status.json</a>"
-            "<a class='btn' href='/bootlog.csv'>bootlog.csv</a>"
-            "<button type='button' class='btn' id='btn-rec'>Save Last 60s Audio (.wav)</button>"
-            "<a class='btn' id='link-wav' href='/rec.wav' style='display:none'>Download rec.wav</a>"
+            "<select id='sel-export' class='sel' aria-label='Export file or save audio'>"
+            "<option value='/drops.csv'>drops.csv (Drop Log)</option>"
+            "<option value='rec_wav'>Save &amp; Get 60s Audio (.wav)</option>"
+            "<option value='/events.csv'>events.csv (Event Log)</option>"
+            "<option value='/status.json'>status.json (Snapshot)</option>"
+            "<option value='/bootlog.csv'>bootlog.csv (Boot Log)</option>"
+            "</select>"
+            "<button type='button' class='btn' id='btn-export'>Go</button>"
             "<span id='rec-msg' class='kpi-sub' aria-live='polite'></span>"
             "<button type='button' class='btn btn-danger' id='btn-clear' style='margin-inline-start:auto'>Clear Log</button>"
             "</div></section>";
+
+    // --- Collapsible Pattern Baseline & Targeted Event Logger Drawer -------
+    page += "<details class='tuning-drawer pat-drawer' id='pattern-drawer'>"
+            "<summary>Pattern Baseline &amp; Targeted Event Logger</summary>"
+            "<div class='tuning-body'>"
+            "<div class='cal-banner' style='margin-block-end:0.55rem'>"
+            "<div class='cal-metrics'>"
+            "<span>Passive Baseline: <strong id='bl-rate'>-- drops/hr</strong> (<strong id='bl-ml-rate'>-- mL/hr</strong>)</span>"
+            "<span>Mean Burst: <strong id='bl-burst-sz'>-- drops</strong> (<strong id='bl-burst-ml'>-- mL</strong>)</span>"
+            "<span>Burst Gap: <strong id='bl-burst-gap'>-- min</strong></span>"
+            "</div>"
+            "<button type='button' class='btn' id='btn-bl-refresh'>Refresh Baseline</button>"
+            "</div>"
+
+            "<div tabindex='0' role='region' aria-labelledby='bl-cap' class='table-wrapper'>"
+            "<table>"
+            "<caption id='bl-cap'>Always-On Passive Baseline by Time Window (Drops, Volume &amp; Bursts)</caption>"
+            "<thead><tr>"
+            "<th>Window</th><th>Drops/hr</th><th>Vol (mL/hr)</th><th>Bursts/hr</th><th>Avg Burst</th><th>vs. Baseline</th>"
+            "</tr></thead>"
+            "<tbody id='tb-baseline'>"
+            "<tr><td colspan='6'>Loading baseline from /drops.csv...</td></tr>"
+            "</tbody></table></div>"
+
+            "<fieldset class='knob-group' style='margin-block-top:0.65rem;margin-block-end:0.55rem'>"
+            "<legend>Targeted Isolation-Test &amp; Event Logger (/events.csv)</legend>"
+            "<div class='cal-row' style='margin-block-top:0.2rem'>"
+            "<div class='cal-field' style='flex:1;min-width:170px'>"
+            "<label for='in-ev-label'>Event / Isolation Test Label</label>"
+            "<input type='text' id='in-ev-label' class='ev-text' list='ev-presets' placeholder='e.g. 301호 Main Water OFF'>"
+            "<datalist id='ev-presets'>"
+            "<option value='301호 Main Water Valve OFF'>"
+            "<option value='301호 Heating (난방) OFF'>"
+            "<option value='301호 Water Purifier (정수기) OFF'>"
+            "<option value='301호 Washing Machine / Laundry'>"
+            "<option value='301호 Master Bath (욕실2) Shower'>"
+            "<option value='Wall Orangina Bottle Emptied'>"
+            "<option value='Rain / Wet Weather'>"
+            "</datalist>"
+            "</div>"
+            "<div class='cal-field' style='width:9rem'>"
+            "<label for='in-ev-note'>Note / Wall Bottle mL</label>"
+            "<input type='text' id='in-ev-note' class='ev-text' placeholder='e.g. 40 mL'>"
+            "</div>"
+            "<button type='button' class='btn' id='btn-ev-start'>Start Test Window</button>"
+            "<button type='button' class='btn' id='btn-ev-stop' disabled>Stop Window</button>"
+            "<button type='button' class='btn' id='btn-ev-instant'>Log Instant Note</button>"
+            "<span id='ev-active-pill' class='pill' style='display:none'></span>"
+            "</div>"
+            "<div tabindex='0' role='region' aria-labelledby='ev-cap' class='table-wrapper'>"
+            "<table>"
+            "<caption id='ev-cap'>Logged Isolation Tests &amp; Events vs. Passive Baseline</caption>"
+            "<thead><tr>"
+            "<th>Event / Test</th><th>Window</th><th>Dur</th><th>Drops (mL)</th><th>Rate (mL/hr)</th><th>vs. Baseline</th>"
+            "</tr></thead>"
+            "<tbody id='tb-events'>"
+            "<tr><td colspan='6'>No targeted events logged yet.</td></tr>"
+            "</tbody></table></div>"
+            "</fieldset>"
+
+            "<div tabindex='0' role='region' aria-labelledby='burst-cap' class='table-wrapper'>"
+            "<table>"
+            "<caption id='burst-cap'>Auto-Detected Recent Bursts / Episodes (gap &gt; 60s)</caption>"
+            "<thead><tr>"
+            "<th>#</th><th>Start Time</th><th>Drops</th><th>Vol (mL)</th><th>Dur</th><th>Gap Since Prev</th><th>Avg Env</th>"
+            "</tr></thead>"
+            "<tbody id='tb-bursts'>"
+            "<tr><td colspan='7'>Loading bursts...</td></tr>"
+            "</tbody></table></div>"
+            "</div></details>";
 
     // --- Collapsible Water Quantity & Scale Calibration Drawer -------------
     snprintf(buf, sizeof(buf),
@@ -850,22 +1003,22 @@ void WebExport::onRoot()
     page += buf;
 
     // --- Live Signal Scope Card (Always visible) + Collapsible Tuning ------
-    page += "<section class='card' style='margin-block-start:1rem' aria-label='Live Signal Scope'>"
+    page += "<section class='card' style='margin-block-start:0.55rem' aria-label='Live Signal Scope'>"
             "<div class='sec-head'>"
-            "<h2>Live Signal Scope (5.2s window)</h2>"
-            "<div style='display:flex;gap:0.5rem;align-items:center'>"
+            "<h2>Live Signal Scope (5.2s)</h2>"
+            "<div style='display:flex;gap:0.4rem;align-items:center'>"
             "<span id='save-badge' class='save-status' aria-live='polite'></span>"
-            "<button type='button' class='btn' id='btn-pause' style='min-height:32px;padding-inline:0.65rem;font-size:0.8rem'>Pause Scope</button>"
+            "<button type='button' class='btn' id='btn-pause' style='min-height:28px;padding-inline:0.55rem;font-size:0.75rem'>Pause</button>"
             "</div></div>"
             "<div class='scope-wrap'>"
-            "<canvas id='scope-cv' width='760' height='220'></canvas>"
+            "<canvas id='scope-cv' width='760' height='165'></canvas>"
             "<div class='scope-bar'>"
             "<div class='legend'>"
-            "<span><i class='dot' style='background:#38bdf8'></i>Envelope</span>"
-            "<span><i class='dot' style='background:#f43f5e'></i><span id='thr-legend'>Threshold (open knobs to drag)</span></span>"
-            "<span><i class='dot' style='background:#64748b'></i>Baseline</span>"
-            "<span><i class='dot' style='background:#22c55e'></i>Capture window</span>"
-            "<span><i class='dot' style='background:#f59e0b'></i>Release / Refractory holdoff</span>"
+            "<span><i class='dot' style='background:#38bdf8'></i>Env</span>"
+            "<span><i class='dot' style='background:#f43f5e'></i><span id='thr-legend'>Thr (locked)</span></span>"
+            "<span><i class='dot' style='background:#64748b'></i>Base</span>"
+            "<span><i class='dot' style='background:#22c55e'></i>Capture</span>"
+            "<span><i class='dot' style='background:#f59e0b'></i>Holdoff</span>"
             "</div></div></div>"
 
             "<details class='tuning-drawer' id='tuning-drawer'>"
@@ -981,6 +1134,7 @@ void WebExport::onRoot()
 (() => {
   const drawer = document.getElementById('tuning-drawer');
   const qtyDrawer = document.getElementById('qty-drawer');
+  const patDrawer = document.getElementById('pattern-drawer');
   const cv = document.getElementById('scope-cv');
   const ctx = cv.getContext('2d');
   const form = document.getElementById('tune-form');
@@ -989,6 +1143,7 @@ void WebExport::onRoot()
 
   let paused = false;
   let activeKnob = null;
+  let curUld = 50.0;
   let lastStream = {
     env: [],
     st: [],
@@ -1004,7 +1159,7 @@ void WebExport::onRoot()
     const unlocked = drawer.open;
     cv.classList.toggle('unlocked', unlocked);
     if (thrLegend) {
-      thrLegend.textContent = unlocked ? 'Threshold (drag line)' : 'Threshold (open knobs to drag)';
+      thrLegend.textContent = unlocked ? 'Thr (drag)' : 'Thr (locked)';
     }
   }
 
@@ -1022,6 +1177,14 @@ void WebExport::onRoot()
   }
   qtyDrawer.addEventListener('toggle', () => {
     sessionStorage.setItem('dm_qty_open', qtyDrawer.open ? '1' : '0');
+  });
+
+  if (sessionStorage.getItem('dm_pat_open') === '1') {
+    patDrawer.open = true;
+  }
+  patDrawer.addEventListener('toggle', () => {
+    sessionStorage.setItem('dm_pat_open', patDrawer.open ? '1' : '0');
+    if (patDrawer.open) refreshPatternAnalysis();
   });
 
   // Water Quantity & Scale Calibration controls
@@ -1158,7 +1321,7 @@ void WebExport::onRoot()
 
   document.getElementById('btn-pause').addEventListener('click', function() {
     paused = !paused;
-    this.textContent = paused ? 'Resume Scope' : 'Pause Scope';
+    this.textContent = paused ? 'Resume' : 'Pause';
   });
 
   document.getElementById('btn-reset').addEventListener('click', async () => {
@@ -1170,25 +1333,216 @@ void WebExport::onRoot()
     if (!confirm('Wipe the entire drop log and reset today\'s histogram?')) return;
     await fetch('/clearlog');
     pollStatus();
+    if (patDrawer.open) refreshPatternAnalysis();
   });
 
-  document.getElementById('btn-rec').addEventListener('click', async function() {
+  document.getElementById('btn-export').addEventListener('click', async function() {
+    const sel = document.getElementById('sel-export').value;
     const msg = document.getElementById('rec-msg');
-    const wavLink = document.getElementById('link-wav');
-    this.disabled = true;
-    msg.textContent = 'Saving 60s WAV to flash...';
-    try {
-      const j = await (await fetch('/record')).json();
-      if (j.ok) {
-        msg.textContent = `Saved ${j.seconds}s @ ${j.rate} Hz`;
-        wavLink.style.display = 'inline-flex';
-      } else {
-        msg.textContent = 'Failed: ' + (j.err || 'error');
+    if (sel === 'rec_wav') {
+      this.disabled = true;
+      msg.textContent = 'Saving 60s WAV...';
+      try {
+        const j = await (await fetch('/record')).json();
+        if (j.ok) {
+          msg.textContent = `Saved ${j.seconds}s WAV`;
+          location.href = '/rec.wav';
+        } else {
+          msg.textContent = 'Err: ' + (j.err || 'fail');
+        }
+      } catch (e) {
+        msg.textContent = 'Request failed';
       }
-    } catch (e) {
-      msg.textContent = 'Request failed';
+      this.disabled = false;
+    } else {
+      location.href = sel;
     }
-    this.disabled = false;
+  });
+
+  // --- Pattern Baseline & Targeted Event Logger Engine ---
+  function escHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  async function refreshPatternAnalysis() {
+    try {
+      const [csvTxt, evTxt] = await Promise.all([
+        fetch('/drops.csv').then(r => r.ok ? r.text() : ''),
+        fetch('/events.csv').then(r => r.ok ? r.text() : '')
+      ]);
+      const drops = [];
+      for (const raw of csvTxt.split('\n')) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#') || line.startsWith('ISO')) continue;
+        const p = line.split(',');
+        if (p.length < 3) continue;
+        const ep = parseInt(p[1], 10);
+        if (!ep || ep < 1700000000) continue;
+        const pk = parseInt(p[2], 10) || 0;
+        const env = p.length > 3 ? (parseInt(p[3], 10) || 0) : 0;
+        const rawVol = p.length > 4 ? (parseInt(p[4], 10) || 0) : 0;
+        const volUl = rawVol > 0 ? rawVol : curUld;
+        drops.push({ iso: p[0], ep, pk, env, volUl });
+      }
+
+      const nowEp = drops.length ? Math.max(Math.floor(Date.now() / 1000), drops[drops.length - 1].ep) : Math.floor(Date.now() / 1000);
+      const firstEp = drops.length ? drops[0].ep : nowEp;
+      const totalSpanHr = Math.max(0.25, (nowEp - firstEp) / 3600);
+
+      // Group into bursts (gap > 60s starts a new burst)
+      const bursts = [];
+      for (const d of drops) {
+        if (!bursts.length || (d.ep - bursts[bursts.length - 1].endEp) > 60) {
+          bursts.push({
+            startIso: d.iso,
+            startEp: d.ep,
+            endEp: d.ep,
+            drops: 1,
+            volUl: d.volUl,
+            envSum: d.env
+          });
+        } else {
+          const b = bursts[bursts.length - 1];
+          b.endEp = d.ep;
+          b.drops++;
+          b.volUl += d.volUl;
+          b.envSum += d.env;
+        }
+      }
+
+      const totalVolMl = drops.reduce((a, d) => a + d.volUl, 0) / 1000.0;
+      const baseDropsHr = drops.length / totalSpanHr;
+      const baseMlHr = totalVolMl / totalSpanHr;
+      const meanBurstDrops = bursts.length ? (drops.length / bursts.length) : 0;
+      const meanBurstMl = bursts.length ? (totalVolMl / bursts.length) : 0;
+      let gapSumMin = 0, gapCnt = 0;
+      for (let i = 1; i < bursts.length; i++) {
+        const gMin = (bursts[i].startEp - bursts[i - 1].startEp) / 60.0;
+        if (gMin < 180) { gapSumMin += gMin; gapCnt++; }
+      }
+      const meanGapMin = gapCnt > 0 ? (gapSumMin / gapCnt) : 0;
+
+      document.getElementById('bl-rate').textContent = `${baseDropsHr.toFixed(1)} drops/hr`;
+      document.getElementById('bl-ml-rate').textContent = `${baseMlHr.toFixed(2)} mL/hr`;
+      document.getElementById('bl-burst-sz').textContent = `${meanBurstDrops.toFixed(1)} drops`;
+      document.getElementById('bl-burst-ml').textContent = `${meanBurstMl.toFixed(2)} mL`;
+      document.getElementById('bl-burst-gap').textContent = gapCnt > 0 ? `${meanGapMin.toFixed(1)} min` : '--';
+
+      // Helper to summarize any subset of drops over a given hours denominator
+      function summarizeWindow(label, filterFn, spanHr) {
+        const sub = drops.filter(filterFn);
+        const subBursts = bursts.filter(b => filterFn({ ep: b.startEp, iso: b.startIso }));
+        const hrs = Math.max(0.1, spanHr);
+        const dHr = sub.length / hrs;
+        const mlHr = (sub.reduce((a, d) => a + d.volUl, 0) / 1000.0) / hrs;
+        const bHr = subBursts.length / hrs;
+        const avgB = subBursts.length ? `${(sub.length / subBursts.length).toFixed(1)}d` : '--';
+        let vs = '--';
+        if (baseDropsHr > 0.1) {
+          const ratio = dHr / baseDropsHr;
+          const pct = Math.round((ratio - 1) * 100);
+          vs = `${pct >= 0 ? '+' : ''}${pct}% (${ratio.toFixed(2)}x)`;
+        }
+        return `<tr><th>${label}</th><td>${dHr.toFixed(1)}</td><td>${mlHr.toFixed(2)} mL</td><td>${bHr.toFixed(2)}</td><td>${avgB}</td><td>${vs}</td></tr>`;
+      }
+
+      function hourOf(iso) {
+        return parseInt(iso.slice(11, 13), 10) || 0;
+      }
+      function isWeekend(ep) {
+        const day = new Date(ep * 1000).getDay();
+        return day === 0 || day === 6;
+      }
+
+      const dayHrs = Math.max(0.25, totalSpanHr * (16 / 24));
+      const nightHrs = Math.max(0.25, totalSpanHr * (7 / 24));
+      const wkndDrops = drops.filter(d => isWeekend(d.ep));
+      const wkdayDrops = drops.filter(d => !isWeekend(d.ep));
+
+      let blRows = '';
+      blRows += summarizeWindow('Last 1 Hour', d => d.ep >= nowEp - 3600, Math.min(1.0, totalSpanHr));
+      blRows += summarizeWindow('Last 6 Hours', d => d.ep >= nowEp - 21600, Math.min(6.0, totalSpanHr));
+      blRows += summarizeWindow('Daytime (07–23h)', d => { const h = hourOf(d.iso); return h >= 7 && h < 23; }, dayHrs);
+      blRows += summarizeWindow('Deep Night (00–07h)', d => { const h = hourOf(d.iso); return h >= 0 && h < 7; }, nightHrs);
+      blRows += summarizeWindow('Weekdays (Mon–Fri)', d => !isWeekend(d.ep), wkdayDrops.length ? Math.max(0.25, totalSpanHr * (5 / 7)) : totalSpanHr);
+      blRows += summarizeWindow('Weekend (Sat–Sun)', d => isWeekend(d.ep), wkndDrops.length ? Math.max(0.25, totalSpanHr * (2 / 7)) : 0.25);
+      document.getElementById('tb-baseline').innerHTML = blRows;
+
+      // Render recent bursts (newest first, up to 25)
+      let bHtml = '';
+      const startIdx = Math.max(0, bursts.length - 25);
+      for (let i = bursts.length - 1; i >= startIdx; i--) {
+        const b = bursts[i];
+        const dur = b.endEp - b.startEp;
+        const gapMin = i > 0 ? ((b.startEp - bursts[i - 1].startEp) / 60.0).toFixed(1) + 'm' : '--';
+        const avgEnv = (b.envSum / b.drops).toFixed(1);
+        bHtml += `<tr><th>#${i + 1}</th><td>${escHtml(b.startIso.slice(5, 19).replace('T', ' '))}</td><td>${b.drops}</td><td>${(b.volUl / 1000).toFixed(2)} mL</td><td>${dur}s</td><td>${gapMin}</td><td>${avgEnv}</td></tr>`;
+      }
+      document.getElementById('tb-bursts').innerHTML = bHtml || "<tr><td colspan='7'>No bursts recorded yet.</td></tr>";
+
+      // Render Targeted Events & Isolation Tests
+      const evRows = [];
+      for (const raw of evTxt.split('\n')) {
+        const line = raw.trim();
+        if (!line || line.startsWith('StartISO')) continue;
+        const p = line.split(',');
+        if (p.length < 4) continue;
+        evRows.push({
+          iso: p[0],
+          sEp: parseInt(p[1], 10) || 0,
+          eEp: parseInt(p[2], 10) || 0,
+          label: p[3],
+          note: p.slice(4).join(',')
+        });
+      }
+      let evHtml = '';
+      for (let i = evRows.length - 1; i >= 0; i--) {
+        const ev = evRows[i];
+        const isPoint = (ev.eEp <= ev.sEp + 5);
+        const durSec = Math.max(1, ev.eEp - ev.sEp);
+        const wDrops = drops.filter(d => d.ep >= ev.sEp && d.ep <= (isPoint ? ev.sEp + 900 : ev.eEp));
+        const wMl = wDrops.reduce((a, d) => a + d.volUl, 0) / 1000.0;
+        const wHrs = isPoint ? 0.25 : (durSec / 3600.0);
+        const wMlHr = wMl / wHrs;
+        const wDropsHr = wDrops.length / wHrs;
+        let vsBase = '--';
+        if (baseDropsHr > 0.1) {
+          const pct = Math.round(((wDropsHr - baseDropsHr) / baseDropsHr) * 100);
+          vsBase = `${pct >= 0 ? '+' : ''}${pct}%`;
+        }
+        const winStr = escHtml(ev.iso.slice(5, 16).replace('T', ' '));
+        const durStr = isPoint ? 'Note (+15m)' : formatDur(durSec);
+        const lblStr = escHtml(ev.label) + (ev.note ? ` <span style='color:#8b9bb4'>(${escHtml(ev.note)})</span>` : '');
+        evHtml += `<tr><th>${lblStr}</th><td>${winStr}</td><td>${durStr}</td><td>${wDrops.length} (${wMl.toFixed(2)} mL)</td><td>${wMlHr.toFixed(2)} mL/hr</td><td>${vsBase}</td></tr>`;
+      }
+      document.getElementById('tb-events').innerHTML = evHtml || "<tr><td colspan='6'>No targeted events logged yet. Use the form above to log a test or note.</td></tr>";
+    } catch (e) {}
+  }
+
+  document.getElementById('btn-bl-refresh').addEventListener('click', refreshPatternAnalysis);
+
+  document.getElementById('btn-ev-start').addEventListener('click', async () => {
+    const lbl = document.getElementById('in-ev-label').value.trim();
+    const note = document.getElementById('in-ev-note').value.trim();
+    if (!lbl) { alert('Enter an Event / Test label first.'); return; }
+    await fetch(`/eventlog?action=start&label=${encodeURIComponent(lbl)}&note=${encodeURIComponent(note)}`);
+    pollStatus();
+  });
+
+  document.getElementById('btn-ev-stop').addEventListener('click', async () => {
+    const note = document.getElementById('in-ev-note').value.trim();
+    await fetch(`/eventlog?action=stop&note=${encodeURIComponent(note)}`);
+    pollStatus();
+    refreshPatternAnalysis();
+  });
+
+  document.getElementById('btn-ev-instant').addEventListener('click', async () => {
+    const lbl = document.getElementById('in-ev-label').value.trim();
+    const note = document.getElementById('in-ev-note').value.trim();
+    if (!lbl) { alert('Enter an Event / Note label first.'); return; }
+    await fetch(`/eventlog?action=instant&label=${encodeURIComponent(lbl)}&note=${encodeURIComponent(note)}`);
+    document.getElementById('in-ev-note').value = '';
+    refreshPatternAnalysis();
   });
 
   // Render the live scope + visual knob explanations
@@ -1517,6 +1871,7 @@ void WebExport::onRoot()
         volGrid.style.display = j.qty_enabled ? 'grid' : 'none';
       }
       const uld = j.ul_per_drop || 50.0;
+      curUld = uld;
       const dpm = uld > 0.1 ? (1000.0 / uld) : 20.0;
       document.getElementById('lbl-cal-summary').textContent = `${uld.toFixed(1)} µL/drop (~${dpm.toFixed(1)} drops/mL)`;
       document.getElementById('kpi-vol-1h').textContent = (j.vol_1h_ml || 0).toFixed(2);
@@ -1534,6 +1889,19 @@ void WebExport::onRoot()
       } else {
         const hrs = Math.max(0.1, (j.log_span_s || 0) / 3600).toFixed(1);
         trendEl.textContent = `Pace over ${hrs}h log · ${uld.toFixed(1)} µL/drop`;
+      }
+
+      // Active Isolation-Test state
+      const evAct = !!j.ev_active;
+      document.getElementById('btn-ev-start').disabled = evAct;
+      document.getElementById('btn-ev-stop').disabled = !evAct;
+      const evPill = document.getElementById('ev-active-pill');
+      if (evAct) {
+        evPill.style.display = 'inline-block';
+        evPill.className = 'pill pill-cap';
+        evPill.textContent = `Active: ${j.ev_label || 'Test'} (${formatDur(j.ev_elapsed_s || 0)})`;
+      } else {
+        evPill.style.display = 'none';
       }
 
       // Calibration run live banner
@@ -1587,6 +1955,7 @@ void WebExport::onRoot()
   setInterval(pollStream, 450);
   pollStatus();
   pollStream();
+  if (patDrawer.open) refreshPatternAnalysis();
 })();
 </script>
 </body></html>
@@ -1614,6 +1983,38 @@ void WebExport::onCsv()
     _server.send(200, "text/csv", "");
 
     uint8_t buf[2048];
+    while (rd.available())
+    {
+        const size_t n = rd.read(buf, sizeof(buf));
+        _server.client().write(buf, n);
+    }
+    rd.close();
+    _server.client().stop();
+}
+
+// ---------------------------------------------------------------------------
+// /events.csv — stream the targeted event & isolation-test log.
+// ---------------------------------------------------------------------------
+void WebExport::onEventsCsv()
+{
+    if (!LittleFS.exists(EVENT_LOG_PATH))
+    {
+        _server.send(200, "text/csv", String(EVENT_LOG_HEADER) + "\n");
+        return;
+    }
+    fs::File rd = LittleFS.open(EVENT_LOG_PATH, "r");
+    if (!rd)
+    {
+        _server.send(200, "text/csv", String(EVENT_LOG_HEADER) + "\n");
+        return;
+    }
+    _server.setContentLength(rd.size());
+    _server.sendHeader("Content-Type", "text/csv");
+    _server.sendHeader("Content-Disposition", "attachment; filename=\"events.csv\"");
+    _server.sendHeader("Connection", "close");
+    _server.send(200, "text/csv", "");
+
+    uint8_t buf[1024];
     while (rd.available())
     {
         const size_t n = rd.read(buf, sizeof(buf));
@@ -1657,8 +2058,10 @@ void WebExport::onStatus()
     const uint32_t cElapsed = _sampler.calRunning()
                                   ? ((nowEpoch >= cStart && cStart > 0) ? (nowEpoch - cStart) : 0)
                                   : ((cStop >= cStart && cStart > 0) ? (cStop - cStart) : 0);
+    const uint32_t evElapsed = (_evActive && nowEpoch >= _evStartEpoch && _evStartEpoch > 0)
+                                  ? (nowEpoch - _evStartEpoch) : 0;
 
-    char head[1400];
+    char head[1600];
     snprintf(head, sizeof(head),
         "{\"time\":%s,\"time_synced\":%s,\"epoch_us\":%lld,"
         "\"drops_today\":%lu,\"triggers_total\":%lu,"
@@ -1673,6 +2076,7 @@ void WebExport::onStatus()
         "\"vol_24h_ml\":%.2f,\"drops_24h\":%lu,\"vol_prev24h_ml\":%.2f,"
         "\"vol_24h_avg_ml\":%.2f,\"log_span_s\":%lu,"
         "\"cal_running\":%s,\"cal_drops\":%lu,\"cal_env_sum\":%lu,\"cal_elapsed_s\":%lu,\"cal_target\":%u,"
+        "\"ev_active\":%s,\"ev_label\":\"%s\",\"ev_elapsed_s\":%lu,"
         "\"wifi_up\":%s,\"rssi\":%d,\"ip\":\"%s\","
         "\"fs_free\":%u,\"fs_total\":%u,\"log_bytes\":%u,"
         "\"uptime_s\":%lu,\"loop_ms_ago\":%lu,"
@@ -1708,6 +2112,9 @@ void WebExport::onStatus()
         (unsigned long)_sampler.calEnvSum(),
         (unsigned long)cElapsed,
         (unsigned)CAL_TARGET_DROPS,
+        _evActive ? "true" : "false",
+        _evLabel,
+        (unsigned long)evElapsed,
         WiFi.status() == WL_CONNECTED ? "true" : "false",
         (int)WiFi.RSSI(), ipStr.c_str(),
         (unsigned)(_log.totalBytes() - _log.usedBytes()),
@@ -1742,6 +2149,12 @@ void WebExport::onClearLog()
 {
     _sampler.discardEvents();   // drop pre-wipe events still in the ring
     _log.clearLog();
+    LittleFS.remove(EVENT_LOG_PATH);
+    _evActive = false;
+    _evStartEpoch = 0;
+    _evStartIso[0] = '\0';
+    _evLabel[0] = '\0';
+    _evNote[0] = '\0';
     _log.appendSettings(_sampler.margin(), _sampler.noiseMult(),
                         _sampler.refractoryMs(), _sampler.releaseMs(),
                         _sampler.captureWindowMs(),
@@ -2032,5 +2445,104 @@ void WebExport::onCalRun()
              (float)_sampler.calAvgEnvTenths() / 10.0f,
              _sampler.calRunning() ? "true" : "false",
              (unsigned long)_sampler.calDrops());
+    _server.send(200, "application/json", out);
+}
+
+// ---------------------------------------------------------------------------
+// /eventlog — start/stop/instant targeted event & isolation test logger
+// ---------------------------------------------------------------------------
+static String sanitizeCsvField(String s)
+{
+    s.replace(",", ";");
+    s.replace("\"", "'");
+    s.replace("\r", " ");
+    s.replace("\n", " ");
+    s.trim();
+    return s;
+}
+
+static void appendEventCsvRow(const char *startIso, uint32_t startEpoch,
+                              uint32_t endEpoch, const char *label, const char *note)
+{
+    const bool exists = LittleFS.exists(EVENT_LOG_PATH);
+    fs::File f = LittleFS.open(EVENT_LOG_PATH, exists ? "a" : "w");
+    if (!f)
+        return;
+    if (!exists || f.size() == 0)
+    {
+        f.println(EVENT_LOG_HEADER);
+    }
+    char line[512];
+    snprintf(line, sizeof(line), "%s,%lu,%lu,%s,%s",
+             startIso,
+             (unsigned long)startEpoch,
+             (unsigned long)endEpoch,
+             label,
+             note);
+    f.println(line);
+    f.close();
+}
+
+void WebExport::onEventLog()
+{
+    const String action = _server.arg("action");
+    const int64_t nowUs = TimeService::epochUs();
+    const uint32_t nowEpoch = (uint32_t)(nowUs / 1000000LL);
+    char nowIso[48] = "1970-01-01T00:00:00";
+    TimeService::formatISO(nowUs, nowIso, sizeof(nowIso));
+
+    const String label = sanitizeCsvField(_server.arg("label"));
+    const String note = sanitizeCsvField(_server.arg("note"));
+
+    if (action == "start")
+    {
+        // If an event was already active, close and save it first
+        if (_evActive && _evStartEpoch > 0)
+        {
+            appendEventCsvRow(_evStartIso, _evStartEpoch, nowEpoch, _evLabel, _evNote);
+        }
+        _evActive = true;
+        _evStartEpoch = nowEpoch;
+        snprintf(_evStartIso, sizeof(_evStartIso), "%s", nowIso);
+        snprintf(_evLabel, sizeof(_evLabel), "%s", label.length() ? label.c_str() : "Isolation Test");
+        snprintf(_evNote, sizeof(_evNote), "%s", note.c_str());
+    }
+    else if (action == "stop")
+    {
+        if (_evActive && _evStartEpoch > 0)
+        {
+            if (note.length())
+                snprintf(_evNote, sizeof(_evNote), "%s", note.c_str());
+            appendEventCsvRow(_evStartIso, _evStartEpoch, nowEpoch, _evLabel, _evNote);
+        }
+        _evActive = false;
+        _evStartEpoch = 0;
+        _evStartIso[0] = '\0';
+        _evLabel[0] = '\0';
+        _evNote[0] = '\0';
+    }
+    else if (action == "instant")
+    {
+        const char *lbl = label.length() ? label.c_str() : "Note";
+        appendEventCsvRow(nowIso, nowEpoch, nowEpoch, lbl, note.c_str());
+    }
+    else if (action == "clear")
+    {
+        LittleFS.remove(EVENT_LOG_PATH);
+        _evActive = false;
+        _evStartEpoch = 0;
+        _evStartIso[0] = '\0';
+        _evLabel[0] = '\0';
+        _evNote[0] = '\0';
+    }
+
+    const uint32_t evElapsed = (_evActive && nowEpoch >= _evStartEpoch && _evStartEpoch > 0)
+                                   ? (nowEpoch - _evStartEpoch) : 0;
+    char out[384];
+    snprintf(out, sizeof(out),
+             "{\"ok\":1,\"ev_active\":%s,\"ev_label\":\"%s\",\"ev_elapsed_s\":%lu}",
+             _evActive ? "true" : "false",
+             _evLabel,
+             (unsigned long)evElapsed);
     _server.send(200, "application/json", out);
 }
