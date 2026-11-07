@@ -141,7 +141,7 @@
 
 #define DEFAULT_QTY_ENABLED     0          // 1 = measure & display water volume (mL)
 #define DEFAULT_UL_TENTHS       500        // 50.0 uL (0.050 mL) default per drop
-#define DEFAULT_CAL_ENV_TENTHS  315        // 31.5 default mean EnvPeak reference
+#define DEFAULT_CAL_ENV_TENTHS  220        // 22.0 default full-drop EnvPeak reference
 #define CAL_TARGET_DROPS        45         // ~3 bursts (~2.3 g) for high scale confidence
 
 // ---------------------------------------------------------------------------

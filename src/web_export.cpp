@@ -1429,7 +1429,7 @@ void WebExport::onRoot()
         fetch('/events.csv').then(r => r.ok ? r.text() : '')
       ]);
       const drops = [];
-      let bIdx = 0, bInitSum = 0, bInitCnt = 0, lastEp = 0;
+      const refEnv = 22.0; // Full-strength detachment drop EnvPeak reference
       for (const raw of csvTxt.split('\n')) {
         const line = raw.trim();
         if (!line || line.startsWith('#') || line.startsWith('ISO')) continue;
@@ -1441,18 +1441,8 @@ void WebExport::onRoot()
         const env = p.length > 3 ? (parseInt(p[3], 10) || 0) : 0;
         const rawVol = p.length > 4 ? (parseInt(p[4], 10) || 0) : 0;
 
-        // Burst-initial self-anchoring volume scaling (#1..#3 drops = 1.0x curUld)
-        const dt = lastEp > 0 ? (ep - lastEp) : 999999;
-        if (dt > 60) {
-          bIdx = 1; bInitSum = env; bInitCnt = 1;
-        } else {
-          bIdx++;
-          if (bIdx <= 3 && dt <= 6.5) { bInitSum += env; bInitCnt++; }
-        }
-        lastEp = ep;
-        const refEnv = bInitCnt > 0 ? (bInitSum / bInitCnt) : 21.0;
-        const ratio = (refEnv > 1 && env > 0) ? (env / refEnv) : 1.0;
-        const scale = ratio >= 0.85 ? Math.min(1.10, 0.95 + 0.10 * (ratio - 0.85)) : Math.max(0.35, ratio);
+        // Proportional energy volume scaling (smaller midday or tail drops -> smaller uL)
+        const scale = env > 0 ? Math.min(1.50, Math.max(0.25, env / refEnv)) : 1.0;
         const volUl = rawVol > 0 ? rawVol : Math.round(curUld * scale);
         drops.push({ iso: p[0], ep, pk, env, volUl });
       }
