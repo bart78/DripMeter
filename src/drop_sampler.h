@@ -67,20 +67,63 @@ public:
     uint16_t calAvgEnvTenths() const { return _calAvgEnvTenths.load(std::memory_order_relaxed); }
 
     // Estimate volume in microliters (uL) for a single drop impact.
-    // Uses 80% calibrated mean drop mass + 20% EnvPeak ratio (clamped 0.5x..1.5x)
-    // so residual water film variance cancels out while onset/tail drops scale naturally.
-    uint16_t estimateDropUl(uint16_t envPeak) const
+    // Anchors each burst's reference energy to its initial full-head drops (#1..#3,
+    // governed by Tate's Law m*g = 2*pi*r*gamma -> 1.0x baseUl), then scales
+    // decaying tail/straggler drops proportionally to (envPeak / burstInitEnv).
+    uint16_t estimateDropUl(uint16_t envPeak, float burstInitEnv = 0.0f) const
     {
         const float baseUl = (float)_ulPerDropTenths.load(std::memory_order_relaxed) * 0.1f;
-        const float avgEnv = (float)_calAvgEnvTenths.load(std::memory_order_relaxed) * 0.1f;
-        float ratio = (avgEnv > 1.0f && envPeak > 0) ? ((float)envPeak / avgEnv) : 1.0f;
-        if (ratio < 0.5f) ratio = 0.5f;
-        if (ratio > 1.5f) ratio = 1.5f;
-        const float blend = 0.80f + 0.20f * ratio;
-        int32_t ul = (int32_t)(baseUl * blend + 0.5f);
+        const float refEnv = (burstInitEnv > 1.0f)
+                                 ? burstInitEnv
+                                 : ((float)_calAvgEnvTenths.load(std::memory_order_relaxed) * 0.1f);
+        float ratio = (refEnv > 1.0f && envPeak > 0) ? ((float)envPeak / refEnv) : 1.0f;
+        float scale = 1.0f;
+        if (ratio >= 0.85f)
+        {
+            // Full-head main-train drop (#1..#13): keep near 1.0x baseUl (cap at 1.10x)
+            scale = 0.95f + 0.10f * (ratio - 0.85f);
+            if (scale > 1.10f) scale = 1.10f;
+        }
+        else
+        {
+            // Decaying tail or satellite straggler drop (#14..#18): scale proportionally with energy
+            scale = ratio;
+            if (scale < 0.35f) scale = 0.35f;
+        }
+        int32_t ul = (int32_t)(baseUl * scale + 0.5f);
         if (ul < 1) ul = 1;
         if (ul > 5000) ul = 5000;
         return (uint16_t)ul;
+    }
+
+    // Track burst-initial reference energy (#1..#3 drops within 6.5s of burst onset)
+    // and return the self-anchored volume estimate in uL for a live drop event.
+    uint16_t estimateLiveDropUl(uint16_t envPeak, int64_t epochUs)
+    {
+        const int64_t dtUs = (_burstLastEpochUs > 0 && epochUs > _burstLastEpochUs)
+                                 ? (epochUs - _burstLastEpochUs)
+                                 : 999999999LL;
+        if (dtUs > 60000000LL)
+        {
+            // New burst onset after >60s quiet gap
+            _burstDropIdx    = 1;
+            _burstInitEnvSum = envPeak;
+            _burstInitCount  = 1;
+        }
+        else
+        {
+            ++_burstDropIdx;
+            if (_burstDropIdx <= 3 && dtUs <= 6500000LL)
+            {
+                _burstInitEnvSum += envPeak;
+                ++_burstInitCount;
+            }
+        }
+        _burstLastEpochUs = epochUs;
+        const float initEnv = (_burstInitCount > 0)
+                                  ? ((float)_burstInitEnvSum / (float)_burstInitCount)
+                                  : 0.0f;
+        return estimateDropUl(envPeak, initEnv);
     }
 
     // Live scale calibration counter (Start -> collect drops -> Stop & Weigh).
@@ -171,6 +214,12 @@ private:
     std::atomic<uint32_t> _calEnvSum{0};
     std::atomic<int64_t>  _calStartEpoch{0};
     std::atomic<int64_t>  _calStopEpoch{0};
+
+    // Burst-initial self-anchoring volume state (consumer-side).
+    int64_t               _burstLastEpochUs = 0;
+    uint16_t              _burstDropIdx     = 0;
+    uint32_t              _burstInitEnvSum  = 0;
+    uint16_t              _burstInitCount   = 0;
 
     // Peak-holding decimated history ring for the live web scope.
     uint16_t              _envHist[kEnvHist]   = {0};

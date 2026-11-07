@@ -165,6 +165,11 @@ uint32_t DropLog::rebuildToday(Histogram &h, const struct tm &today,
     // Stream the file line by line — constant RAM regardless of size.
     String line;
     uint32_t lineNum = 0;
+    double   lastEvSec    = 0.0;
+    uint16_t burstDropIdx = 0;
+    uint32_t burstInitSum = 0;
+    uint16_t burstInitCnt = 0;
+
     while (rd.available())
     {
         if ((++lineNum & 0xFF) == 0)
@@ -202,7 +207,27 @@ uint32_t DropLog::rebuildToday(Histogram &h, const struct tm &today,
                 envPeak = (uint16_t)ep;
         }
 
-        const uint16_t volUl = sampler ? sampler->estimateDropUl(envPeak) : (DEFAULT_UL_TENTHS / 10);
+        // Anchor each burst's reference energy to its initial 1..3 full-head drops
+        const double dtSec = (lastEvSec > 0.0 && ev > lastEvSec) ? (ev - lastEvSec) : 999999.0;
+        if (dtSec > 60.0)
+        {
+            burstDropIdx = 1;
+            burstInitSum = envPeak;
+            burstInitCnt = 1;
+        }
+        else
+        {
+            ++burstDropIdx;
+            if (burstDropIdx <= 3 && dtSec <= 6.5)
+            {
+                burstInitSum += envPeak;
+                ++burstInitCnt;
+            }
+        }
+        lastEvSec = ev;
+        const float burstInitEnv = (burstInitCnt > 0) ? ((float)burstInitSum / (float)burstInitCnt) : 0.0f;
+
+        const uint16_t volUl = sampler ? sampler->estimateDropUl(envPeak, burstInitEnv) : (DEFAULT_UL_TENTHS / 10);
 
         const time_t t = (time_t)ev;
         h.addRolling(t, volUl);

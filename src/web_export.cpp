@@ -1076,9 +1076,9 @@ void WebExport::onRoot()
 
             "<div tabindex='0' role='region' aria-labelledby='burst-cap' class='table-wrapper'>"
             "<table>"
-            "<caption id='burst-cap'>Auto-Detected Recent Bursts / Episodes (gap &gt; 60s)</caption>"
+            "<caption id='burst-cap'>Auto-Detected Recent Bursts / Siphon Cycles (Tail-Coalesced)</caption>"
             "<thead><tr>"
-            "<th>#</th><th>Start Time</th><th>Drops</th><th>Vol (mL)</th><th>Dur</th><th>Gap Since Prev</th><th>Avg Env</th>"
+            "<th>#</th><th>Start Time</th><th>Drops</th><th>Vol (mL)</th><th>Dur</th><th>Cycle Period</th><th>Avg Env</th>"
             "</tr></thead>"
             "<tbody id='tb-bursts'>"
             "<tr><td colspan='7'>Loading bursts...</td></tr>"
@@ -1429,51 +1429,89 @@ void WebExport::onRoot()
         fetch('/events.csv').then(r => r.ok ? r.text() : '')
       ]);
       const drops = [];
+      let bIdx = 0, bInitSum = 0, bInitCnt = 0, lastEp = 0;
       for (const raw of csvTxt.split('\n')) {
         const line = raw.trim();
         if (!line || line.startsWith('#') || line.startsWith('ISO')) continue;
         const p = line.split(',');
         if (p.length < 3) continue;
-        const ep = parseInt(p[1], 10);
+        const ep = parseFloat(p[1]);
         if (!ep || ep < 1700000000) continue;
         const pk = parseInt(p[2], 10) || 0;
         const env = p.length > 3 ? (parseInt(p[3], 10) || 0) : 0;
         const rawVol = p.length > 4 ? (parseInt(p[4], 10) || 0) : 0;
-        const volUl = rawVol > 0 ? rawVol : curUld;
+
+        // Burst-initial self-anchoring volume scaling (#1..#3 drops = 1.0x curUld)
+        const dt = lastEp > 0 ? (ep - lastEp) : 999999;
+        if (dt > 60) {
+          bIdx = 1; bInitSum = env; bInitCnt = 1;
+        } else {
+          bIdx++;
+          if (bIdx <= 3 && dt <= 6.5) { bInitSum += env; bInitCnt++; }
+        }
+        lastEp = ep;
+        const refEnv = bInitCnt > 0 ? (bInitSum / bInitCnt) : 21.0;
+        const ratio = (refEnv > 1 && env > 0) ? (env / refEnv) : 1.0;
+        const scale = ratio >= 0.85 ? Math.min(1.10, 0.95 + 0.10 * (ratio - 0.85)) : Math.max(0.35, ratio);
+        const volUl = rawVol > 0 ? rawVol : Math.round(curUld * scale);
         drops.push({ iso: p[0], ep, pk, env, volUl });
       }
 
-      const nowEp = drops.length ? Math.max(Math.floor(Date.now() / 1000), drops[drops.length - 1].ep) : Math.floor(Date.now() / 1000);
+      const nowEp = drops.length ? Math.max(Date.now() / 1000, drops[drops.length - 1].ep) : (Date.now() / 1000);
       const firstEp = drops.length ? drops[0].ep : nowEp;
       const totalSpanHr = Math.max(0.1, (nowEp - firstEp) / 3600);
 
-      // Group into bursts (gap > 60s starts a new burst)
-      const bursts = [];
-      for (const d of drops) {
-        if (!bursts.length || (d.ep - bursts[bursts.length - 1].endEp) > 60) {
-          bursts.push({
-            startIso: d.iso,
-            startEp: d.ep,
-            endEp: d.ep,
-            drops: 1,
-            volUl: d.volUl,
-            envSum: d.env
-          });
+      // Stage 1: Adaptive Tail-Coalescing Clusterer
+      // Absorbs slow exponential tail drops (60..180s after prev drop) as long as the drop
+      // is NOT the rapid onset (dt_next <= 12s) of a new burst.
+      const rawClusters = [];
+      for (let i = 0; i < drops.length; i++) {
+        const d = drops[i];
+        if (!rawClusters.length) {
+          rawClusters.push({ startIso: d.iso, startEp: d.ep, endEp: d.ep, drops: 1, strag: 0, volUl: d.volUl, envSum: d.env });
+          continue;
+        }
+        const prevB = rawClusters[rawClusters.length - 1];
+        const dtPrev = d.ep - prevB.endEp;
+        const dtNext = (i + 1 < drops.length) ? (drops[i + 1].ep - d.ep) : 9999;
+        if (dtPrev <= 60 || (dtPrev <= 180 && dtNext > 12 && prevB.drops >= 3)) {
+          prevB.endEp = d.ep;
+          prevB.drops++;
+          prevB.volUl += d.volUl;
+          prevB.envSum += d.env;
         } else {
-          const b = bursts[bursts.length - 1];
-          b.endEp = d.ep;
-          b.drops++;
-          b.volUl += d.volUl;
-          b.envSum += d.env;
+          rawClusters.push({ startIso: d.iso, startEp: d.ep, endEp: d.ep, drops: 1, strag: 0, volUl: d.volUl, envSum: d.env });
+        }
+      }
+
+      // Stage 2: Primary Siphon Cycle vs. Mid-Gap Straggler Classification
+      // Promotes >=3-drop bursts and open-slot 2-drop bursts (>=9m from adjacent >=3 bursts),
+      // rolling isolated 1-2 drop mid-gap ticks into the preceding burst's +strag count.
+      const bursts = [];
+      for (let i = 0; i < rawClusters.length; i++) {
+        const c = rawClusters[i];
+        let isPrimary = c.drops >= 3;
+        if (!isPrimary && c.drops === 2 && (c.endEp - c.startEp) <= 45) {
+          const prevOk = !bursts.length || (c.startEp - bursts[bursts.length - 1].startEp) >= 540;
+          let nextEp = null;
+          for (let j = i + 1; j < rawClusters.length; j++) {
+            if (rawClusters[j].drops >= 3) { nextEp = rawClusters[j].startEp; break; }
+          }
+          const nextOk = (nextEp === null) || (nextEp - c.startEp) >= 540;
+          if (prevOk && nextOk) isPrimary = true;
+        }
+        if (isPrimary || !bursts.length) {
+          bursts.push(c);
+        } else {
+          bursts[bursts.length - 1].strag += c.drops;
+          bursts[bursts.length - 1].volUl += c.volUl;
         }
       }
 
       const totalVolMl = drops.reduce((a, d) => a + d.volUl, 0) / 1000.0;
       const baseDropsHr = drops.length / totalSpanHr;
       const baseMlHr = totalVolMl / totalSpanHr;
-      // Separate main bursts (>=3 drops) from 1-2 drop trailing stragglers for accurate burst sizing
-      const mainBursts = bursts.filter(b => b.drops >= 3);
-      const refBursts = mainBursts.length ? mainBursts : bursts;
+      const refBursts = bursts;
       const refBurstDrops = refBursts.reduce((a, b) => a + b.drops, 0);
       const refBurstMl = refBursts.reduce((a, b) => a + b.volUl, 0) / 1000.0;
       const meanBurstDrops = refBursts.length ? (refBurstDrops / refBursts.length) : 0;
@@ -1545,10 +1583,11 @@ void WebExport::onRoot()
       const startIdx = Math.max(0, bursts.length - 25);
       for (let i = bursts.length - 1; i >= startIdx; i--) {
         const b = bursts[i];
-        const dur = b.endEp - b.startEp;
+        const dur = Math.round(b.endEp - b.startEp);
         const gapMin = i > 0 ? ((b.startEp - bursts[i - 1].startEp) / 60.0).toFixed(1) + 'm' : '--';
         const avgEnv = (b.envSum / b.drops).toFixed(1);
-        bHtml += `<tr><th>#${i + 1}</th><td>${escHtml(b.startIso.slice(5, 19).replace('T', ' '))}</td><td>${b.drops}</td><td>${(b.volUl / 1000).toFixed(2)} mL</td><td>${dur}s</td><td>${gapMin}</td><td>${avgEnv}</td></tr>`;
+        const dropLabel = b.strag > 0 ? `${b.drops} <span style='color:#8b9bb4'>(+${b.strag})</span>` : `${b.drops}`;
+        bHtml += `<tr><th>#${i + 1}</th><td>${escHtml(b.startIso.slice(5, 19).replace('T', ' '))}</td><td>${dropLabel}</td><td>${(b.volUl / 1000).toFixed(2)} mL</td><td>${dur}s</td><td>${gapMin}</td><td>${avgEnv}</td></tr>`;
       }
       document.getElementById('tb-bursts').innerHTML = bHtml || "<tr><td colspan='7'>No bursts recorded yet.</td></tr>";
 
