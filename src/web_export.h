@@ -67,4 +67,8 @@ private:
     char         _evStartIso[36] = {0};
     char         _evLabel[64] = {0};
     char         _evNote[64] = {0};
+
+    // Multipart CSV restore upload state
+    fs::File     _restoreFile;
+    bool         _restoreOk = false;
 };

@@ -35,6 +35,8 @@ static const uint8_t *const F_TINY  = u8g2_font_6x10_tf;       // footer
 #define C_WARN    rgb(255, 176, 46)
 #define C_GRID    rgb(35, 43, 54)
 #define C_BAR_DIM rgb(46, 58, 76)      // yesterday ghost bars
+#define C_ADC     rgb(249, 115, 22)    // today avg PeakADC strength line
+#define C_ADC_DIM rgb(154, 91, 37)     // yesterday avg PeakADC strength line
 
 // ---------------------------------------------------------------------------
 // Geometry (320x480 portrait)
@@ -261,83 +263,159 @@ void Dashboard::drawStats(const DashSnapshot &s)
 
 void Dashboard::drawHistogram(const DashSnapshot &s)
 {
-    char buf[40];
+    char buf[48];
 
-    // Title + legend for the yesterday comparison layer.
-    snprintf(buf, sizeof(buf), "DROPS PER %d MIN - 24 HOURS", BUCKET_MINUTES);
-    textTop(PLOT_X0, TITLE_Y, F_SMALL, C_DIM, buf);
-    textRight(PLOT_X1, TITLE_Y, F_TINY, C_DIM, "DIM=YDAY");
+    // Title + legend for hourly bars + strength line.
+    textTop(PLOT_X0, TITLE_Y, F_SMALL, C_DIM, "DROPS/HR & STRENGTH (24H)");
+    textRight(PLOT_X1, TITLE_Y, F_TINY, C_ADC, "LINE=ADC");
 
-    const int16_t plotH = PLOT_Y1 - PLOT_Y0;
-    const int16_t plotW = PLOT_X1 - PLOT_X0;              // 300 px
-    const uint16_t mx = s.histo ? s.histo->max() : 0;
+    const int16_t plotH   = PLOT_Y1 - PLOT_Y0;            // 310 px
+    const int16_t plotW   = PLOT_X1 - PLOT_X0;            // 300 px
+    const int16_t usableH = plotH - 18;                   // 292 px (headroom for top labels)
 
-    // Max label (auto-scale reference).
-    snprintf(buf, sizeof(buf), "MAX %u", (unsigned)mx);
-    textRight(PLOT_X1 - 2, PLOT_Y0 + 2, F_TINY, C_DIM, buf);
+    // Aggregate 96 x 15m buckets into 24 x 1-hour fat bars + weighted Avg PeakADC
+    uint32_t todayH[24] = {0};
+    uint32_t ydayH[24]  = {0};
+    uint32_t adcTH[24]  = {0};
+    uint32_t adcYH[24]  = {0};
+    uint32_t trueMaxHr  = 0;
+    uint32_t maxDrops   = 60;
+    uint32_t maxAdc     = 80;
+    uint32_t dayDropsT  = 0;
+    uint32_t dayAdcSumT = 0;
 
-    // Plot background + faint quarter-height grid lines.
+    if (s.histo)
+    {
+        for (uint8_t h = 0; h < 24; ++h)
+        {
+            uint32_t tCnt = 0, yCnt = 0, tW = 0, yW = 0;
+            for (uint8_t q = 0; q < 4; ++q)
+            {
+                const uint8_t idx = h * 4 + q;
+                const uint16_t ct = s.histo->bucket(idx);
+                const uint16_t cy = s.histo->bucketYesterday(idx);
+                tCnt += ct;
+                yCnt += cy;
+                tW   += (uint32_t)ct * s.histo->bucketAvgAdc(idx);
+                yW   += (uint32_t)cy * s.histo->bucketYesterdayAvgAdc(idx);
+            }
+            todayH[h] = tCnt;
+            ydayH[h]  = yCnt;
+            adcTH[h]  = tCnt ? ((tW + (tCnt / 2)) / tCnt) : 0;
+            adcYH[h]  = yCnt ? ((yW + (yCnt / 2)) / yCnt) : 0;
+            dayDropsT  += tCnt;
+            dayAdcSumT += tW;
+            if (tCnt > trueMaxHr) trueMaxHr = tCnt;
+            if (yCnt > trueMaxHr) trueMaxHr = yCnt;
+            if (tCnt > maxDrops)  maxDrops  = tCnt;
+            if (yCnt > maxDrops)  maxDrops  = yCnt;
+            if (adcTH[h] > maxAdc) maxAdc = adcTH[h];
+            if (adcYH[h] > maxAdc) maxAdc = adcYH[h];
+        }
+    }
+    maxDrops = ((maxDrops + 19) / 20) * 20;
+    if (maxDrops < 60) maxDrops = 60;
+    maxAdc = ((maxAdc + 24) / 25) * 25;
+    if (maxAdc < 100) maxAdc = 100;
+
+    // Plot background + quarter-height grid lines.
     _gfx->fillRect(PLOT_X0, PLOT_Y0, plotW, plotH, C_PANEL2);
     _gfx->drawRect(PLOT_X0, PLOT_Y0, plotW, plotH, C_BORDER);
     for (uint8_t q = 1; q < 4; ++q)
-        _gfx->drawFastHLine(PLOT_X0 + 1, PLOT_Y0 + (plotH * q) / 4,
+        _gfx->drawFastHLine(PLOT_X0 + 1, PLOT_Y0 + 16 + (usableH * q) / 4,
                             plotW - 2, C_GRID);
 
-    // Bars: one slot per bucket (3 px each = 2 px bar + 1 px gap).
-    const uint8_t slotW = plotW / Histogram::kBuckets;    // 3
-    const uint8_t barW  = slotW - 1;                      // 2
+    // Top-left max drops/hr label & top-right average ADC strength label.
+    snprintf(buf, sizeof(buf), "MAX %lu/H (YDAY=DIM)", (unsigned long)trueMaxHr);
+    textTop(PLOT_X0 + 4, PLOT_Y0 + 3, F_TINY, C_DIM, buf);
 
-    // Yesterday's counts first, as a dim ghost behind today's.
-    if (s.histo)
-    {
-        for (uint8_t i = 0; i < Histogram::kBuckets; ++i)
-        {
-            const uint16_t c = s.histo->bucketYesterday(i);
-            if (c == 0)
-                continue;
-            int16_t h = (mx > 0) ? (int16_t)((uint32_t)c * plotH / mx) : 0;
-            if (h < 1)
-                h = 1;
-            if (h > plotH - 1)
-                h = plotH - 1;
-            const int16_t x = PLOT_X0 + 1 + i * slotW;
-            _gfx->fillRect(x, PLOT_Y1 - h, barW, h, C_BAR_DIM);
-        }
-    }
+    const uint32_t avgDayAdc = dayDropsT ? ((dayAdcSumT + (dayDropsT / 2)) / dayDropsT) : 0;
+    snprintf(buf, sizeof(buf), "AVG %lu ADC", (unsigned long)avgDayAdc);
+    textRight(PLOT_X1 - 4, PLOT_Y0 + 3, F_TINY, C_ADC, buf);
+
+    // 24 hourly slots across 288 px (12 px per hour: 5px Yday + 5px Today + 2px gap).
+    const int16_t baseX = PLOT_X0 + 6;                    // 16..304
+    const int16_t slotW = 12;
+    const int16_t barW  = 5;
 
     uint8_t nowIdx = 0;
     if (s.timeValid)
         nowIdx = Histogram::indexFor(s.now);
+    const uint8_t nowHour = nowIdx / 4;
 
-    for (uint8_t i = 0; i < Histogram::kBuckets; ++i)
+    for (uint8_t h = 0; h < 24; ++h)
     {
-        const uint16_t c = s.histo ? s.histo->bucket(i) : 0;
-        if (c == 0)
+        const int16_t xSlot = baseX + h * slotW;
+        const uint32_t cy = ydayH[h];
+        if (cy > 0)
+        {
+            int16_t bh = (int16_t)((cy * (uint32_t)usableH) / maxDrops);
+            if (bh < 2) bh = 2;
+            if (bh > usableH) bh = usableH;
+            _gfx->fillRect(xSlot, PLOT_Y1 - bh, barW, bh, C_BAR_DIM);
+        }
+
+        const uint32_t ct = todayH[h];
+        if (ct > 0)
+        {
+            int16_t bh = (int16_t)((ct * (uint32_t)usableH) / maxDrops);
+            if (bh < 2) bh = 2;
+            if (bh > usableH) bh = usableH;
+            _gfx->fillRect(xSlot + barW, PLOT_Y1 - bh, barW, bh,
+                           (h == nowHour) ? C_BAR_HI : C_BAR);
+        }
+    }
+
+    // Yesterday Avg Strength (PeakADC) dim amber overlay line.
+    int16_t prevX = -1, prevY = -1;
+    for (uint8_t h = 0; h < 24; ++h)
+    {
+        if (adcYH[h] == 0)
             continue;
-        int16_t h = (mx > 0) ? (int16_t)((uint32_t)c * plotH / mx) : 0;
-        if (h < 1)
-            h = 1;
-        if (h > plotH - 1)
-            h = plotH - 1;
-        const int16_t x = PLOT_X0 + 1 + i * slotW;
-        _gfx->fillRect(x, PLOT_Y1 - h, barW, h, (i == nowIdx) ? C_BAR_HI : C_BAR);
+        const int16_t cx = baseX + h * slotW + barW;
+        int16_t cy = PLOT_Y1 - (int16_t)((adcYH[h] * (uint32_t)usableH) / maxAdc);
+        if (cy < PLOT_Y0 + 16) cy = PLOT_Y0 + 16;
+        if (prevX >= 0)
+            _gfx->drawLine(prevX, prevY, cx, cy, C_ADC_DIM);
+        prevX = cx;
+        prevY = cy;
+    }
+
+    // Today Avg Strength (PeakADC) bright orange 2px line + node dots.
+    prevX = -1;
+    prevY = -1;
+    for (uint8_t h = 0; h < 24; ++h)
+    {
+        if (adcTH[h] == 0)
+            continue;
+        const int16_t cx = baseX + h * slotW + barW;
+        int16_t cy = PLOT_Y1 - (int16_t)((adcTH[h] * (uint32_t)usableH) / maxAdc);
+        if (cy < PLOT_Y0 + 16) cy = PLOT_Y0 + 16;
+        if (prevX >= 0)
+        {
+            _gfx->drawLine(prevX, prevY, cx, cy, C_ADC);
+            _gfx->drawLine(prevX, prevY - 1, cx, cy - 1, C_ADC);
+        }
+        _gfx->fillCircle(cx, cy, 2, C_ADC);
+        prevX = cx;
+        prevY = cy;
     }
 
     // "Now" marker (only meaningful while the clock is synced).
     if (s.timeValid && nowIdx < Histogram::kBuckets)
     {
-        const int16_t x = PLOT_X0 + 1 + nowIdx * slotW + barW / 2;
-        _gfx->drawFastVLine(x, PLOT_Y0 + 1, plotH - 2, C_NOW);
-        _gfx->fillTriangle(x - 3, PLOT_Y0, x + 3, PLOT_Y0, x, PLOT_Y0 + 6, C_NOW);
+        const int16_t x = baseX + (nowIdx * (24 * slotW)) / Histogram::kBuckets;
+        _gfx->drawFastVLine(x, PLOT_Y0 + 16, usableH, C_NOW);
+        _gfx->fillTriangle(x - 3, PLOT_Y0 + 15, x + 3, PLOT_Y0 + 15, x, PLOT_Y0 + 21, C_NOW);
     }
 
-    // Hour labels 00..24 (every 6th hour = every 24 buckets).
+    // Hour labels 00..24 (every 6th hour).
     for (uint8_t h = 0; h <= 4; ++h)
     {
         snprintf(buf, sizeof(buf), "%02d", h * 6);
-        const int16_t cx = PLOT_X0 + h * (plotW / 4);
+        const int16_t cx = baseX + (h * 6) * slotW;
         if (h == 0)
-            textTop(cx, HOUR_LABEL_Y, F_TINY, C_DIM, buf);
+            textTop(PLOT_X0, HOUR_LABEL_Y, F_TINY, C_DIM, buf);
         else if (h == 4)
             textRight(PLOT_X1, HOUR_LABEL_Y, F_TINY, C_DIM, buf);
         else

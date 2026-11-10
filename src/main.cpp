@@ -227,7 +227,7 @@ void loop()
 
         struct tm tmv;
         if (TimeService::localTime(tmv))
-            gHisto.record(tmv, (time_t)(ev.epochUs / 1000000LL), volUl);
+            gHisto.record(tmv, (time_t)(ev.epochUs / 1000000LL), volUl, ev.peak);
 
         gUi.noteEvent();
         DBG_PRINTF("[DROP] peak=%u env=%u vol=%uuL epoch=%lld\n",

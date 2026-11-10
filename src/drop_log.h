@@ -57,6 +57,10 @@ public:
     // number of removed drop rows.
     uint32_t trimSince(double cutoffEpochSec);
 
+    // Atomically replace /drops.csv with a newly uploaded temporary CSV file
+    // (used by POST /restore_csv after a partition-table flash).
+    bool replaceFromTmp(const char *tmpPath);
+
     bool     fsOk()       const { return _fsOk; }
     bool     ok()         const { return _open; }
     size_t   fileSize()   const { return _size; }

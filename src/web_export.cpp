@@ -615,6 +615,47 @@ void WebExport::begin()
                     Update.printError(Serial);
             }
         });
+    _server.on("/restore_csv", HTTP_POST,
+        [this]() {
+            uint32_t todayDrops = 0;
+            bool ok = _restoreOk && _log.replaceFromTmp("/drops_upload.tmp");
+            if (ok) {
+                struct tm tmv;
+                if (TimeService::localTime(tmv))
+                    todayDrops = _log.rebuildToday(_histo, tmv, &_sampler);
+            }
+            char resp[160];
+            snprintf(resp, sizeof(resp),
+                     "{\"ok\":%d,\"bytes\":%u,\"drops_today\":%lu}",
+                     ok ? 1 : 0, (unsigned)_log.fileSize(), (unsigned long)todayDrops);
+            _server.send(ok ? 200 : 500, "application/json", resp);
+        },
+        [this]() {
+            HTTPUpload &up = _server.upload();
+            if (up.status == UPLOAD_FILE_START) {
+                _sampler.discardEvents();
+                LittleFS.remove("/drops_upload.tmp");
+                _restoreFile = LittleFS.open("/drops_upload.tmp", "w");
+                _restoreOk = (bool)_restoreFile;
+            } else if (up.status == UPLOAD_FILE_WRITE) {
+                if (_restoreOk && _restoreFile) {
+                    if (_restoreFile.write(up.buf, up.currentSize) != up.currentSize)
+                        _restoreOk = false;
+                }
+            } else if (up.status == UPLOAD_FILE_END) {
+                if (_restoreFile) {
+                    _restoreFile.flush();
+                    _restoreFile.close();
+                }
+                if (up.totalSize < 16)
+                    _restoreOk = false;
+            } else if (up.status == UPLOAD_FILE_ABORTED) {
+                if (_restoreFile)
+                    _restoreFile.close();
+                LittleFS.remove("/drops_upload.tmp");
+                _restoreOk = false;
+            }
+        });
     _server.on("/bootlog.csv", HTTP_GET, [this]() {
         fs::File rd = LittleFS.open("/bootlog.csv", "r");
         if (!rd) { _server.send(404, "text/plain", "no boot log yet"); return; }
@@ -654,69 +695,120 @@ void WebExport::taskEntry(void *arg)
 
 void WebExport::histogramSVG(String &out, uint8_t nowIdx)
 {
-    const int16_t BASE = 118;
-    uint16_t mx = _histo.max();
-    if (mx == 0)
-        mx = 1;
+    // Aggregate 96 x 15m buckets into 24 x 1-hour bars + weighted Avg PeakADC
+    uint32_t todayH[24] = {0};
+    uint32_t ydayH[24]  = {0};
+    uint32_t adcTH[24]  = {0};
+    uint32_t adcYH[24]  = {0};
+    uint32_t maxDrops = 60;
+    uint32_t maxAdc   = 80;
+
+    for (uint8_t h = 0; h < 24; ++h)
+    {
+        uint32_t tCnt = 0, yCnt = 0, tWeighted = 0, yWeighted = 0;
+        for (uint8_t q = 0; q < 4; ++q)
+        {
+            const uint8_t idx = h * 4 + q;
+            const uint16_t ct = _histo.bucket(idx);
+            const uint16_t cy = _histo.bucketYesterday(idx);
+            tCnt += ct;
+            yCnt += cy;
+            tWeighted += (uint32_t)ct * _histo.bucketAvgAdc(idx);
+            yWeighted += (uint32_t)cy * _histo.bucketYesterdayAvgAdc(idx);
+        }
+        todayH[h] = tCnt;
+        ydayH[h]  = yCnt;
+        adcTH[h]  = tCnt ? ((tWeighted + (tCnt / 2)) / tCnt) : 0;
+        adcYH[h]  = yCnt ? ((yWeighted + (yCnt / 2)) / yCnt) : 0;
+        if (tCnt > maxDrops) maxDrops = tCnt;
+        if (yCnt > maxDrops) maxDrops = yCnt;
+        if (adcTH[h] > maxAdc) maxAdc = adcTH[h];
+        if (adcYH[h] > maxAdc) maxAdc = adcYH[h];
+    }
+    maxDrops = ((maxDrops + 19) / 20) * 20;
+    if (maxDrops < 60) maxDrops = 60;
+    maxAdc = ((maxAdc + 24) / 25) * 25;
+    if (maxAdc < 100) maxAdc = 100;
+
+    const int16_t PAD_L = 32, PAD_T = 18, PLOT_W = 616, PLOT_H = 152, BASE = 170;
+    const uint8_t nowHour = nowIdx / 4;
 
     out.reserve(8192);
-    out += "<svg id='histo-svg' viewBox='0 0 302 126' role='img' "
-           "aria-label='24-hour drop histogram' xmlns='http://www.w3.org/2000/svg' "
+    out += "<svg id='histo-svg' viewBox='0 0 680 196' role='img' "
+           "aria-label='24-hour hourly drop rate and strength chart' xmlns='http://www.w3.org/2000/svg' "
            "style='width:100%;height:auto;background:#0d1119;border-radius:6px;"
            "border:1px solid #263042;display:block'>";
 
-    char r[128];
-    for (uint8_t q = 1; q < 4; ++q)
+    char r[256];
+    for (uint8_t q = 0; q <= 4; ++q)
     {
-        const int16_t gy = 2 + (116 * q) / 4;
+        const int16_t gy = PAD_T + (PLOT_H * q) / 4;
+        const uint32_t dVal = maxDrops - (maxDrops * q) / 4;
+        const uint32_t aVal = maxAdc - (maxAdc * q) / 4;
         snprintf(r, sizeof(r),
-                 "<line x1='0' y1='%d' x2='302' y2='%d' stroke='#1a2230' stroke-width='1'/>",
-                 gy, gy);
+                 "<line x1='%d' y1='%d' x2='%d' y2='%d' stroke='#1a2230' stroke-width='1'/>"
+                 "<text x='%d' y='%d' text-anchor='end' font-size='9' font-family='monospace' fill='#8b9bb4'>%lu</text>"
+                 "<text x='%d' y='%d' text-anchor='start' font-size='9' font-family='monospace' fill='#f97316'>%lu</text>",
+                 PAD_L, gy, PAD_L + PLOT_W, gy,
+                 PAD_L - 4, gy + 3, (unsigned long)dVal,
+                 PAD_L + PLOT_W + 4, gy + 3, (unsigned long)aVal);
         out += r;
     }
 
-    for (uint8_t i = 0; i < Histogram::kBuckets; ++i)
+    for (uint8_t h = 0; h < 24; ++h)
     {
-        const int16_t x = 3 + i * 3;
-        const uint16_t cy = _histo.bucketYesterday(i);
-        const uint16_t ct = _histo.bucket(i);
-        if (cy)
+        const float slotX = PAD_L + (h * PLOT_W) / 24.0f;
+        const int16_t xY = (int16_t)(slotX + 2.0f);
+        const int16_t xT = (int16_t)(slotX + 12.5f);
+        if (ydayH[h])
         {
-            int16_t h = (int16_t)((uint32_t)cy * 114 / mx);
-            if (h < 1) h = 1;
+            int16_t bh = (int16_t)((ydayH[h] * (uint32_t)PLOT_H) / maxDrops);
+            if (bh < 2) bh = 2;
             snprintf(r, sizeof(r),
-                     "<rect x='%d' y='%d' width='2' height='%d' fill='#2b384e'/>",
-                     x, BASE - h, h);
+                     "<rect x='%d' y='%d' width='9.5' height='%d' rx='1.5' fill='#2b384e'/>",
+                     xY, BASE - bh, bh);
             out += r;
         }
-        if (ct)
+        if (todayH[h])
         {
-            int16_t h = (int16_t)((uint32_t)ct * 114 / mx);
-            if (h < 1) h = 1;
+            int16_t bh = (int16_t)((todayH[h] * (uint32_t)PLOT_H) / maxDrops);
+            if (bh < 2) bh = 2;
             snprintf(r, sizeof(r),
-                     "<rect x='%d' y='%d' width='2' height='%d' fill='%s'/>",
-                     x, BASE - h, h, (i == nowIdx) ? "#38bdf8" : "#0284c7");
+                     "<rect x='%d' y='%d' width='9.5' height='%d' rx='1.5' fill='%s'/>",
+                     xT, BASE - bh, bh, (h == nowHour) ? "#38bdf8" : "#0284c7");
             out += r;
         }
     }
 
-    const int16_t nx = 3 + nowIdx * 3 + 1;
-    snprintf(r, sizeof(r),
-             "<line x1='%d' y1='2' x2='%d' y2='118' stroke='#f43f5e' stroke-width='1'/>",
-             nx, nx);
-    out += r;
-    for (uint8_t h = 0; h <= 4; ++h)
+    // Strength (Avg PeakADC) polyline for Today
+    bool started = false;
+    out += "<path d='";
+    for (uint8_t h = 0; h < 24; ++h)
     {
-        const int16_t tx = (h == 4) ? 290 : (3 + h * 72);
+        if (!adcTH[h]) continue;
+        const int16_t cx = (int16_t)(PAD_L + ((h + 0.5f) * PLOT_W) / 24.0f);
+        int16_t cy = BASE - (int16_t)((adcTH[h] * (uint32_t)PLOT_H) / maxAdc);
+        if (cy < PAD_T) cy = PAD_T;
+        snprintf(r, sizeof(r), "%c%d,%d ", started ? 'L' : 'M', cx, cy);
+        out += r;
+        started = true;
+    }
+    out += "' fill='none' stroke='#f97316' stroke-width='2.2'/>";
+
+    const int16_t nx = PAD_L + (int16_t)(((nowIdx + 0.5f) * PLOT_W) / 96.0f);
+    snprintf(r, sizeof(r),
+             "<line x1='%d' y1='%d' x2='%d' y2='%d' stroke='#f43f5e' stroke-width='1.2' stroke-dasharray='3,2'/>",
+             nx, PAD_T, nx, BASE);
+    out += r;
+
+    for (uint8_t h = 0; h <= 24; h += 3)
+    {
+        const int16_t tx = PAD_L + (h * PLOT_W) / 24;
         snprintf(r, sizeof(r),
-                 "<text x='%d' y='125' font-size='6.5' font-family='monospace' fill='#8b9bb4'>%02d:00</text>",
-                 tx, h * 6);
+                 "<text x='%d' y='188' text-anchor='middle' font-size='9.5' font-family='monospace' fill='#8b9bb4'>%02d:00</text>",
+                 tx, h);
         out += r;
     }
-    snprintf(r, sizeof(r),
-             "<text x='298' y='10' text-anchor='end' font-size='6.5' font-family='monospace' fill='#8b9bb4'>max %u</text>",
-             (unsigned)_histo.max());
-    out += r;
     out += "</svg>";
 }
 
@@ -864,19 +956,26 @@ void WebExport::onRoot()
     // --- 24h Histogram Card ------------------------------------------------
     page += "<section class='card' aria-label='24-hour distribution'>"
             "<div class='sec-head'>"
-            "<h2>24-Hour Drop Distribution (15m)</h2>"
+            "<h2 id='histo-title'>24-Hour Drop Rate &amp; Impact Strength (1h)</h2>"
+            "<div style='display:flex;align-items:center;gap:0.65rem;flex-wrap:wrap'>"
             "<div class='legend'>"
             "<span><i class='dot' style='background:#0284c7'></i>Today</span>"
-            "<span><i class='dot' style='background:#38bdf8'></i>Now bucket</span>"
+            "<span><i class='dot' style='background:#38bdf8'></i>Now hr</span>"
             "<span><i class='dot' style='background:#2b384e'></i>Yday</span>"
+            "<span><i class='dot' style='background:#f97316'></i>Avg Strength (ADC)</span>"
             "<span><i class='dot' style='background:#f43f5e'></i>Now</span>"
-            "</div></div>"
+            "</div>"
+            "<div style='display:inline-flex;border:1px solid #263042;border-radius:5px;overflow:hidden'>"
+            "<button type='button' id='btn-hist-1h' class='btn' style='min-height:24px;padding:0.1rem 0.55rem;font-size:0.72rem;border:0;border-radius:0;background:#0284c7;color:#fff'>1h Fat</button>"
+            "<button type='button' id='btn-hist-15m' class='btn' style='min-height:24px;padding:0.1rem 0.55rem;font-size:0.72rem;border:0;border-radius:0;background:#111722;color:#8b9bb4'>15m</button>"
+            "</div></div></div>"
             "<div id='histo-box'>";
     page += svg;
     page += "</div>"
             "<div class='toolbar'>"
-            "<select id='sel-export' class='sel' aria-label='Export file, save audio, or undo handling noise'>"
-            "<option value='/drops.csv'>drops.csv (Drop Log)</option>"
+            "<select id='sel-export' class='sel' aria-label='Export file, restore backup, save audio, or undo handling noise'>"
+            "<option value='/drops.csv'>drops.csv (Download Drop Log)</option>"
+            "<option value='restore_csv'>Restore drops.csv from Backup...</option>"
             "<option value='rec_wav'>Save &amp; Get 60s Audio (.wav)</option>"
             "<option value='/events.csv'>events.csv (Event Log)</option>"
             "<option value='trim_5'>Undo Last 5m Drops (Handling Noise)</option>"
@@ -885,6 +984,7 @@ void WebExport::onRoot()
             "<option value='/bootlog.csv'>bootlog.csv (Boot Log)</option>"
             "</select>"
             "<button type='button' class='btn' id='btn-export'>Go</button>"
+            "<input type='file' id='in-restore-csv' accept='.csv,text/csv' style='display:none'>"
             "<span id='rec-msg' class='kpi-sub' aria-live='polite'></span>"
             "<button type='button' class='btn btn-danger' id='btn-clear' style='margin-inline-start:auto'>Clear Log</button>"
             "</div></section>";
@@ -1386,9 +1486,38 @@ void WebExport::onRoot()
     if (patDrawer.open) refreshPatternAnalysis();
   });
 
+  const restoreInput = document.getElementById('in-restore-csv');
+  if (restoreInput) {
+    restoreInput.addEventListener('change', async () => {
+      const f = restoreInput.files && restoreInput.files[0];
+      if (!f) return;
+      const msg = document.getElementById('rec-msg');
+      msg.textContent = `Uploading ${f.name}...`;
+      const fd = new FormData();
+      fd.append('file', f, 'drops.csv');
+      try {
+        const j = await (await fetch('/restore_csv', { method: 'POST', body: fd })).json();
+        if (j.ok) {
+          msg.textContent = `Restored (${j.drops_today || 0} drops today) ✓`;
+          pollStatus();
+          if (patDrawer.open) refreshPatternAnalysis();
+        } else {
+          msg.textContent = 'Restore failed';
+        }
+      } catch (e) {
+        msg.textContent = 'Restore upload error';
+      }
+      restoreInput.value = '';
+    });
+  }
+
   document.getElementById('btn-export').addEventListener('click', async function() {
     const sel = document.getElementById('sel-export').value;
     const msg = document.getElementById('rec-msg');
+    if (sel === 'restore_csv') {
+      if (restoreInput) restoreInput.click();
+      return;
+    }
     if (sel === 'trim_5') {
       await trimRecentDrops(5);
       return;
@@ -1885,40 +2014,217 @@ void WebExport::onRoot()
     if (!dragging) drawScope(null);
   });
 
-  // Update histogram SVG client-side from /status.json
-  function renderHistogramClient(today, yday, nowIdx) {
-    let mx = 1;
-    for (let i = 0; i < 96; i++) {
-      if (today[i] > mx) mx = today[i];
-      if (yday[i] > mx) mx = yday[i];
+  // Update histogram SVG client-side from /status.json (1h Fat default + 15m toggle)
+  let histMode = sessionStorage.getItem('dm_hist_mode') || '1h';
+  let lastHistoData = null;
+  const btnHist1h = document.getElementById('btn-hist-1h');
+  const btnHist15m = document.getElementById('btn-hist-15m');
+  const histTitle = document.getElementById('histo-title');
+
+  function syncHistModeUI() {
+    const is1h = (histMode !== '15m');
+    if (btnHist1h) {
+      btnHist1h.style.background = is1h ? '#0284c7' : '#111722';
+      btnHist1h.style.color = is1h ? '#fff' : '#8b9bb4';
     }
-    const BASE = 118;
-    let s = "<svg id='histo-svg' viewBox='0 0 302 126' role='img' aria-label='24-hour drop histogram' xmlns='http://www.w3.org/2000/svg' style='width:100%;height:auto;background:#0d1119;border-radius:6px;border:1px solid #263042;display:block'>";
-    for (let q = 1; q < 4; q++) {
-      const gy = 2 + Math.floor((116 * q) / 4);
-      s += `<line x1='0' y1='${gy}' x2='302' y2='${gy}' stroke='#1a2230' stroke-width='1'/>`;
+    if (btnHist15m) {
+      btnHist15m.style.background = !is1h ? '#0284c7' : '#111722';
+      btnHist15m.style.color = !is1h ? '#fff' : '#8b9bb4';
     }
-    for (let i = 0; i < 96; i++) {
-      const x = 3 + i * 3;
-      if (yday[i]) {
-        const h = Math.max(1, Math.floor((yday[i] * 114) / mx));
-        s += `<rect x='${x}' y='${BASE - h}' width='2' height='${h}' fill='#2b384e'/>`;
+    if (histTitle) {
+      histTitle.textContent = is1h
+        ? '24-Hour Drop Rate & Impact Strength (1h)'
+        : '24-Hour Drop Distribution & Strength (15m)';
+    }
+  }
+  syncHistModeUI();
+
+  if (btnHist1h) {
+    btnHist1h.addEventListener('click', () => {
+      histMode = '1h';
+      sessionStorage.setItem('dm_hist_mode', '1h');
+      syncHistModeUI();
+      if (lastHistoData) renderHistogramClient(lastHistoData);
+    });
+  }
+  if (btnHist15m) {
+    btnHist15m.addEventListener('click', () => {
+      histMode = '15m';
+      sessionStorage.setItem('dm_hist_mode', '15m');
+      syncHistModeUI();
+      if (lastHistoData) renderHistogramClient(lastHistoData);
+    });
+  }
+
+  function renderHistogramClient(hObj) {
+    lastHistoData = hObj;
+    const today = hObj.today || [];
+    const yday = hObj.yesterday || [];
+    const todayAdc = hObj.today_adc || [];
+    const ydayAdc = hObj.yday_adc || [];
+    const nowIdx = hObj.now_bucket || 0;
+
+    const PAD_L = 32, PAD_T = 18, PLOT_W = 616, PLOT_H = 152, BASE = 170;
+    let s = "<svg id='histo-svg' viewBox='0 0 680 196' role='img' aria-label='24-hour drop rate and impact strength chart' xmlns='http://www.w3.org/2000/svg' style='width:100%;height:auto;background:#0d1119;border-radius:6px;border:1px solid #263042;display:block'>";
+
+    if (histMode !== '15m') {
+      // --- 1-HOUR FAT BARS + AVG STRENGTH (ADC) OVERLAY ---
+      const todayH = new Array(24).fill(0);
+      const ydayH = new Array(24).fill(0);
+      const adcTH = new Array(24).fill(0);
+      const adcYH = new Array(24).fill(0);
+      let maxDrops = 60, maxAdc = 80;
+      let totalT = 0, totalWeightedT = 0, trueMaxHr = 0;
+
+      for (let h = 0; h < 24; h++) {
+        let tCnt = 0, yCnt = 0, tW = 0, yW = 0;
+        for (let q = 0; q < 4; q++) {
+          const idx = h * 4 + q;
+          const ct = today[idx] || 0;
+          const cy = yday[idx] || 0;
+          const at = todayAdc[idx] || 0;
+          const ay = ydayAdc[idx] || 0;
+          tCnt += ct;
+          yCnt += cy;
+          tW += ct * at;
+          yW += cy * ay;
+        }
+        todayH[h] = tCnt;
+        ydayH[h] = yCnt;
+        adcTH[h] = tCnt > 0 ? Math.round(tW / tCnt) : 0;
+        adcYH[h] = yCnt > 0 ? Math.round(yW / yCnt) : 0;
+        totalT += tCnt;
+        totalWeightedT += tW;
+        if (tCnt > trueMaxHr) trueMaxHr = tCnt;
+        if (yCnt > trueMaxHr) trueMaxHr = yCnt;
+        if (tCnt > maxDrops) maxDrops = tCnt;
+        if (yCnt > maxDrops) maxDrops = yCnt;
+        if (adcTH[h] > maxAdc) maxAdc = adcTH[h];
+        if (adcYH[h] > maxAdc) maxAdc = adcYH[h];
       }
-      if (today[i]) {
-        const h = Math.max(1, Math.floor((today[i] * 114) / mx));
-        const c = (i === nowIdx) ? '#38bdf8' : '#0284c7';
-        s += `<rect x='${x}' y='${BASE - h}' width='2' height='${h}' fill='${c}'/>`;
+      maxDrops = Math.max(60, Math.ceil(maxDrops / 20) * 20);
+      maxAdc = Math.max(100, Math.ceil(maxAdc / 25) * 25);
+
+      for (let q = 0; q <= 4; q++) {
+        const gy = Math.round(PAD_T + (PLOT_H * q) / 4);
+        const dVal = Math.round(maxDrops - (maxDrops * q) / 4);
+        const aVal = Math.round(maxAdc - (maxAdc * q) / 4);
+        s += `<line x1='${PAD_L}' y1='${gy}' x2='${PAD_L + PLOT_W}' y2='${gy}' stroke='#1a2230' stroke-width='1'/>`;
+        s += `<text x='${PAD_L - 4}' y='${gy + 3}' text-anchor='end' font-size='9' font-family='monospace' fill='#8b9bb4'>${dVal}</text>`;
+        s += `<text x='${PAD_L + PLOT_W + 4}' y='${gy + 3}' text-anchor='start' font-size='9' font-family='monospace' fill='#f97316'>${aVal}</text>`;
       }
+
+      const nowHour = Math.floor(nowIdx / 4);
+      for (let h = 0; h < 24; h++) {
+        const slotX = PAD_L + (h * PLOT_W) / 24;
+        const xY = (slotX + 2.0).toFixed(1);
+        const xT = (slotX + 12.5).toFixed(1);
+        const hh = String(h).padStart(2, '0');
+        const tip = `${hh}:00–${hh}:59 | Today: ${todayH[h]} drops (${adcTH[h] || '--'} ADC) | Yday: ${ydayH[h]} drops (${adcYH[h] || '--'} ADC)`;
+        s += `<g><title>${tip}</title>`;
+        if (ydayH[h] > 0) {
+          const bh = Math.max(2, Math.round((ydayH[h] * PLOT_H) / maxDrops));
+          s += `<rect x='${xY}' y='${BASE - bh}' width='9.5' height='${bh}' rx='1.5' fill='#2b384e'/>`;
+        }
+        if (todayH[h] > 0) {
+          const bh = Math.max(2, Math.round((todayH[h] * PLOT_H) / maxDrops));
+          const c = (h === nowHour) ? '#38bdf8' : '#0284c7';
+          s += `<rect x='${xT}' y='${BASE - bh}' width='9.5' height='${bh}' rx='1.5' fill='${c}'/>`;
+        }
+        s += `</g>`;
+      }
+
+      // Yesterday Avg Strength dashed line
+      let dY = '';
+      for (let h = 0; h < 24; h++) {
+        if (!adcYH[h]) continue;
+        const cx = (PAD_L + ((h + 0.5) * PLOT_W) / 24).toFixed(1);
+        const cy = Math.max(PAD_T, Math.round(BASE - (adcYH[h] * PLOT_H) / maxAdc));
+        dY += (dY ? ' L' : 'M') + `${cx},${cy}`;
+      }
+      if (dY) {
+        s += `<path d='${dY}' fill='none' stroke='#9a5b25' stroke-width='1.5' stroke-dasharray='3,3'/>`;
+      }
+
+      // Today Avg Strength solid orange line + dots
+      let dT = '';
+      let dots = '';
+      for (let h = 0; h < 24; h++) {
+        if (!adcTH[h]) continue;
+        const cx = (PAD_L + ((h + 0.5) * PLOT_W) / 24).toFixed(1);
+        const cy = Math.max(PAD_T, Math.round(BASE - (adcTH[h] * PLOT_H) / maxAdc));
+        dT += (dT ? ' L' : 'M') + `${cx},${cy}`;
+        dots += `<circle cx='${cx}' cy='${cy}' r='2.8' fill='#fb923c' stroke='#0d1119' stroke-width='1'/>`;
+      }
+      if (dT) {
+        s += `<path d='${dT}' fill='none' stroke='#f97316' stroke-width='2.2'/>` + dots;
+      }
+
+      const avgDayAdc = totalT > 0 ? Math.round(totalWeightedT / totalT) : 0;
+      s += `<text x='${PAD_L + 4}' y='12' font-size='8.5' font-family='monospace' fill='#8b9bb4'>Drops/hr (max ${trueMaxHr}/hr)</text>`;
+      s += `<text x='${PAD_L + PLOT_W - 4}' y='12' text-anchor='end' font-size='8.5' font-family='monospace' fill='#f97316'>Avg Strength: ${avgDayAdc || '--'} ADC</text>`;
+    } else {
+      // --- 15-MINUTE BARS + AVG STRENGTH (ADC) OVERLAY ---
+      let maxB = 20, maxAdc = 80, trueMaxB = 0;
+      for (let i = 0; i < 96; i++) {
+        const ct = today[i] || 0, cy = yday[i] || 0;
+        const at = todayAdc[i] || 0, ay = ydayAdc[i] || 0;
+        if (ct > trueMaxB) trueMaxB = ct;
+        if (cy > trueMaxB) trueMaxB = cy;
+        if (ct > maxB) maxB = ct;
+        if (cy > maxB) maxB = cy;
+        if (at > maxAdc) maxAdc = at;
+        if (ay > maxAdc) maxAdc = ay;
+      }
+      maxB = Math.max(20, Math.ceil(maxB / 10) * 10);
+      maxAdc = Math.max(100, Math.ceil(maxAdc / 25) * 25);
+
+      for (let q = 0; q <= 4; q++) {
+        const gy = Math.round(PAD_T + (PLOT_H * q) / 4);
+        const dVal = Math.round(maxB - (maxB * q) / 4);
+        const aVal = Math.round(maxAdc - (maxAdc * q) / 4);
+        s += `<line x1='${PAD_L}' y1='${gy}' x2='${PAD_L + PLOT_W}' y2='${gy}' stroke='#1a2230' stroke-width='1'/>`;
+        s += `<text x='${PAD_L - 4}' y='${gy + 3}' text-anchor='end' font-size='9' font-family='monospace' fill='#8b9bb4'>${dVal}</text>`;
+        s += `<text x='${PAD_L + PLOT_W + 4}' y='${gy + 3}' text-anchor='start' font-size='9' font-family='monospace' fill='#f97316'>${aVal}</text>`;
+      }
+
+      const bw = PLOT_W / 96;
+      for (let i = 0; i < 96; i++) {
+        const x = (PAD_L + i * bw + 0.6).toFixed(1);
+        const w = Math.max(2.5, bw - 1.4).toFixed(1);
+        if (yday[i]) {
+          const bh = Math.max(1, Math.round((yday[i] * PLOT_H) / maxB));
+          s += `<rect x='${x}' y='${BASE - bh}' width='${w}' height='${bh}' fill='#2b384e'/>`;
+        }
+        if (today[i]) {
+          const bh = Math.max(1, Math.round((today[i] * PLOT_H) / maxB));
+          const c = (i === nowIdx) ? '#38bdf8' : '#0284c7';
+          s += `<rect x='${x}' y='${BASE - bh}' width='${w}' height='${bh}' fill='${c}'/>`;
+        }
+      }
+
+      let dT = '';
+      for (let i = 0; i < 96; i++) {
+        if (!todayAdc[i]) continue;
+        const cx = (PAD_L + (i + 0.5) * bw).toFixed(1);
+        const cy = Math.max(PAD_T, Math.round(BASE - (todayAdc[i] * PLOT_H) / maxAdc));
+        dT += (dT ? ' L' : 'M') + `${cx},${cy}`;
+      }
+      if (dT) {
+        s += `<path d='${dT}' fill='none' stroke='#f97316' stroke-width='1.8'/>`;
+      }
+      s += `<text x='${PAD_L + 4}' y='12' font-size='8.5' font-family='monospace' fill='#8b9bb4'>Drops/15m (max ${trueMaxB})</text>`;
+      s += `<text x='${PAD_L + PLOT_W - 4}' y='12' text-anchor='end' font-size='8.5' font-family='monospace' fill='#f97316'>15m Avg Strength (ADC)</text>`;
     }
-    const nx = 3 + nowIdx * 3 + 1;
-    s += `<line x1='${nx}' y1='2' x2='${nx}' y2='118' stroke='#f43f5e' stroke-width='1'/>`;
-    for (let h = 0; h <= 4; h++) {
-      const tx = (h === 4) ? 290 : (3 + h * 72);
-      const hh = String(h * 6).padStart(2, '0');
-      s += `<text x='${tx}' y='125' font-size='6.5' font-family='monospace' fill='#8b9bb4'>${hh}:00</text>`;
+
+    const nx = (PAD_L + ((nowIdx + 0.5) * PLOT_W) / 96).toFixed(1);
+    s += `<line x1='${nx}' y1='${PAD_T}' x2='${nx}' y2='${BASE}' stroke='#f43f5e' stroke-width='1.2' stroke-dasharray='3,2'/>`;
+    for (let h = 0; h <= 24; h += 3) {
+      const tx = Math.round(PAD_L + (h * PLOT_W) / 24);
+      const hh = String(h).padStart(2, '0');
+      s += `<text x='${tx}' y='188' text-anchor='middle' font-size='9.5' font-family='monospace' fill='#8b9bb4'>${hh}:00</text>`;
     }
-    const trueMax = Math.max(...today, ...yday, 0);
-    s += `<text x='298' y='10' text-anchor='end' font-size='6.5' font-family='monospace' fill='#8b9bb4'>max ${trueMax}</text></svg>`;
+    s += "</svg>";
     document.getElementById('histo-box').innerHTML = s;
   }
 
@@ -2045,7 +2351,7 @@ void WebExport::onRoot()
       if (j.histogram && j.histogram.today && j.histogram.yesterday) {
         const ydSum = j.histogram.yesterday.reduce((a, b) => a + b, 0);
         document.getElementById('kpi-yday').textContent = ydSum;
-        renderHistogramClient(j.histogram.today, j.histogram.yesterday, j.histogram.now_bucket || 0);
+        renderHistogramClient(j.histogram);
       }
     } catch (e) {}
   }
@@ -2237,7 +2543,7 @@ void WebExport::onStatus()
         BUCKET_MINUTES, (unsigned)nowBucket);
 
     String js;
-    js.reserve(3600);
+    js.reserve(4600);
     js += head;
     for (uint8_t i = 0; i < Histogram::kBuckets; ++i)
     {
@@ -2249,6 +2555,18 @@ void WebExport::onStatus()
     {
         if (i) js += ',';
         js += String(_histo.bucketYesterday(i));
+    }
+    js += "],\"today_adc\":[";
+    for (uint8_t i = 0; i < Histogram::kBuckets; ++i)
+    {
+        if (i) js += ',';
+        js += String(_histo.bucketAvgAdc(i));
+    }
+    js += "],\"yday_adc\":[";
+    for (uint8_t i = 0; i < Histogram::kBuckets; ++i)
+    {
+        if (i) js += ',';
+        js += String(_histo.bucketYesterdayAvgAdc(i));
     }
     js += "]}}";
 

@@ -30,8 +30,8 @@ public:
     bool sameDate(const struct tm &t) const;
 
     // Increment the bucket t belongs to (today's or yesterday's array).
-    void add(const struct tm &t, uint16_t volUl = 0);
-    void addYesterday(const struct tm &t, uint16_t volUl = 0);
+    void add(const struct tm &t, uint16_t volUl = 0, uint16_t peakAdc = 0);
+    void addYesterday(const struct tm &t, uint16_t volUl = 0, uint16_t peakAdc = 0);
 
     // Add a drop at epochSec into the rolling 1h / 24h / multi-day accumulators.
     void addRolling(time_t epochSec, uint16_t volUl);
@@ -40,7 +40,7 @@ public:
     void clearRolling();
 
     // Convenience: rollover at midnight if needed, then count one drop + volume.
-    void record(const struct tm &t, time_t epochSec = 0, uint16_t volUl = 0);
+    void record(const struct tm &t, time_t epochSec = 0, uint16_t volUl = 0, uint16_t peakAdc = 0);
 
     // Call once per second from the loop; at midnight, today's counts move
     // to the yesterday array and today starts empty.
@@ -54,6 +54,8 @@ public:
     uint16_t max() const;               // tallest bucket across BOTH days
     uint16_t bucket(uint8_t i) const;   // today, 0..kBuckets-1
     uint16_t bucketYesterday(uint8_t i) const;
+    uint16_t bucketAvgAdc(uint8_t i) const;
+    uint16_t bucketYesterdayAvgAdc(uint8_t i) const;
     const uint16_t *buckets() const { return _bToday; }
     const uint16_t *bucketsYesterday() const { return _bYesterday; }
 
@@ -76,10 +78,12 @@ public:
     }
 
 private:
-    uint16_t _bToday[kBuckets]     = {0};
-    uint16_t _bYesterday[kBuckets] = {0};
-    uint32_t _volTodayUl           = 0;
-    uint32_t _volYesterdayUl       = 0;
+    uint16_t _bToday[kBuckets]           = {0};
+    uint16_t _bYesterday[kBuckets]       = {0};
+    uint32_t _bTodayAdcSum[kBuckets]     = {0};
+    uint32_t _bYesterdayAdcSum[kBuckets] = {0};
+    uint32_t _volTodayUl                 = 0;
+    uint32_t _volYesterdayUl             = 0;
 
     // 60 x 1-minute slots for exact Last Hour volume & drops
     uint32_t _minTag[kMinSlots]    = {0};

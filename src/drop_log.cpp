@@ -188,9 +188,17 @@ uint32_t DropLog::rebuildToday(Histogram &h, const struct tm &today,
         if (!isfinite(ev) || ev < TIME_VALID_EPOCH || ev > 4.1e9)
             continue;                       // corrupt or pre-sync: skip
 
-        // Parse EnvPeak (4th column) so we can always compute calibrated volume.
+        // Parse PeakADC (3rd column) and EnvPeak (4th column).
+        uint16_t peakAdc = 0;
         uint16_t envPeak = 22;
         const int comma3 = line.indexOf(',', comma2 + 1);
+        const String pkStr = (comma3 > comma2)
+                             ? line.substring(comma2 + 1, comma3)
+                             : line.substring(comma2 + 1);
+        const int pk = pkStr.toInt();
+        if (pk > 0 && pk <= 4096)
+            peakAdc = (uint16_t)pk;
+
         if (comma3 > comma2)
         {
             const int comma4 = line.indexOf(',', comma3 + 1);
@@ -211,14 +219,14 @@ uint32_t DropLog::rebuildToday(Histogram &h, const struct tm &today,
         localtime_r(&t, &tmv);
         if (h.sameDate(tmv))
         {
-            h.add(tmv, volUl);
+            h.add(tmv, volUl, peakAdc);
             ++matched;
         }
         else if ((uint8_t)tmv.tm_year == (uint8_t)ydayTm.tm_year &&
                  (uint8_t)tmv.tm_mon  == (uint8_t)ydayTm.tm_mon &&
                  (uint8_t)tmv.tm_mday == (uint8_t)ydayTm.tm_mday)
         {
-            h.addYesterday(tmv, volUl);
+            h.addYesterday(tmv, volUl, peakAdc);
         }
     }
     rd.close();
@@ -347,6 +355,56 @@ uint32_t DropLog::trimSince(double cutoffEpochSec)
     Serial.printf("[FS] trimmed %lu recent drop rows since %.0f\n",
                   (unsigned long)removed, cutoffEpochSec);
     return removed;
+}
+
+bool DropLog::replaceFromTmp(const char *tmpPath)
+{
+    if (!_fsOk || !tmpPath || !LittleFS.exists(tmpPath))
+        return false;
+
+    // Ensure the uploaded file ends with a newline so the torn-write guard is happy.
+    {
+        fs::File chk = LittleFS.open(tmpPath, "r");
+        bool needsNl = false;
+        if (chk && chk.size() > 0)
+        {
+            chk.seek(chk.size() - 1);
+            uint8_t last = 0;
+            if (chk.read(&last, 1) == 1 && last != '\n')
+                needsNl = true;
+            chk.close();
+        }
+        if (needsNl)
+        {
+            fs::File ap = LittleFS.open(tmpPath, FILE_APPEND);
+            if (ap)
+            {
+                ap.print('\n');
+                ap.flush();
+                ap.close();
+            }
+        }
+    }
+
+    if (_open)
+    {
+        _file.close();
+        _open = false;
+    }
+    LittleFS.remove(LOG_PATH);
+    if (!LittleFS.rename(tmpPath, LOG_PATH))
+    {
+        LittleFS.remove(tmpPath);
+        reopen();
+        return false;
+    }
+    reopen();
+    if (_open)
+    {
+        _size = _file.size();
+    }
+    Serial.printf("[FS] restored %s (%u bytes)\n", LOG_PATH, (unsigned)_size);
+    return _open;
 }
 
 bool DropLog::compact()

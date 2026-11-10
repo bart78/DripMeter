@@ -21,19 +21,21 @@ bool Histogram::sameDate(const struct tm &t) const
            (uint8_t)t.tm_mday == _mday;
 }
 
-void Histogram::add(const struct tm &t, uint16_t volUl)
+void Histogram::add(const struct tm &t, uint16_t volUl, uint16_t peakAdc)
 {
     const uint8_t idx = indexFor(t);
     if (_bToday[idx] < 0xFFFF)
         ++_bToday[idx];
+    _bTodayAdcSum[idx] += peakAdc;
     _volTodayUl += volUl;
 }
 
-void Histogram::addYesterday(const struct tm &t, uint16_t volUl)
+void Histogram::addYesterday(const struct tm &t, uint16_t volUl, uint16_t peakAdc)
 {
     const uint8_t idx = indexFor(t);
     if (_bYesterday[idx] < 0xFFFF)
         ++_bYesterday[idx];
+    _bYesterdayAdcSum[idx] += peakAdc;
     _volYesterdayUl += volUl;
 }
 
@@ -88,12 +90,12 @@ void Histogram::clearRolling()
     _totalLogDrops = 0;
 }
 
-void Histogram::record(const struct tm &t, time_t epochSec, uint16_t volUl)
+void Histogram::record(const struct tm &t, time_t epochSec, uint16_t volUl, uint16_t peakAdc)
 {
     rolloverIfNeeded(t);
     if (!_anchored)
         resetForDate(t);
-    add(t, volUl);
+    add(t, volUl, peakAdc);
     if (epochSec >= TIME_VALID_EPOCH)
         addRolling(epochSec, volUl);
 }
@@ -109,6 +111,8 @@ void Histogram::rolloverIfNeeded(const struct tm &now)
     // starts fresh. (The CSV log keeps the full history either way.)
     memcpy(_bYesterday, _bToday, sizeof(_bToday));
     memset(_bToday, 0, sizeof(_bToday));
+    memcpy(_bYesterdayAdcSum, _bTodayAdcSum, sizeof(_bTodayAdcSum));
+    memset(_bTodayAdcSum, 0, sizeof(_bTodayAdcSum));
     _volYesterdayUl = _volTodayUl;
     _volTodayUl     = 0;
     _year = (uint8_t)now.tm_year;
@@ -120,6 +124,8 @@ void Histogram::clear()
 {
     memset(_bToday, 0, sizeof(_bToday));
     memset(_bYesterday, 0, sizeof(_bYesterday));
+    memset(_bTodayAdcSum, 0, sizeof(_bTodayAdcSum));
+    memset(_bYesterdayAdcSum, 0, sizeof(_bYesterdayAdcSum));
     _volTodayUl     = 0;
     _volYesterdayUl = 0;
     clearRolling();
@@ -154,6 +160,20 @@ uint16_t Histogram::bucket(uint8_t i) const
 uint16_t Histogram::bucketYesterday(uint8_t i) const
 {
     return (i < kBuckets) ? _bYesterday[i] : 0;
+}
+
+uint16_t Histogram::bucketAvgAdc(uint8_t i) const
+{
+    if (i >= kBuckets || _bToday[i] == 0)
+        return 0;
+    return (uint16_t)((_bTodayAdcSum[i] + (_bToday[i] / 2)) / _bToday[i]);
+}
+
+uint16_t Histogram::bucketYesterdayAvgAdc(uint8_t i) const
+{
+    if (i >= kBuckets || _bYesterday[i] == 0)
+        return 0;
+    return (uint16_t)((_bYesterdayAdcSum[i] + (_bYesterday[i] / 2)) / _bYesterday[i]);
 }
 
 uint32_t Histogram::lastHourVolUl(time_t nowSec) const
