@@ -7,6 +7,8 @@
 
 ## 1. Starting From First Principles: What Is Happening in Unit 201?
 
+![Architectural Cross-Section of the Leak Mechanism](data/leak_mechanism_cutaway.jpg)
+
 ### A. Two Leak Exits + One Known Wet Spot Upstairs (Active Since March/April 2026)
 Since spring 2026 (over 7 months, through spring, summer, and autumn), water has been showing up in three linked places:
 1. **Known Wet Area Upstairs (`301호` Laundry / Utility Room `다용도실 / 세탁실`):** The concrete floor around the laundry room on the side of the kitchen in `301호` has been reported to look **visibly saturated and wet**. That laundry room also houses the apartment's **whole-house air filtration / ventilation unit (`전열교환기 / 세대 환기유니트`)** connected to the outside.
