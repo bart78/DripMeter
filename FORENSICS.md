@@ -88,16 +88,16 @@ Right now, the biggest roadblock is human: **breaking open concrete ("explorator
 
 Here is the **3-Step Plan** to establish 100% undeniable proof **before** anyone opens the floor:
 
-### Step 1 (Zero Cost, Immediate): Get the `44B` Blueprints from `관리사무소 기전실` to Prove the Conduit Connection on Paper
-Go to the **Building Management Mechanical/Electrical Office (`관리사무소 기전실`)** and ask to photograph these **4 specific `44B (146.49㎡B)` As-Built Diagrams (`준공 도면`)**:
+### Step 1 (Zero Cost, Immediate): Get the `44B` Blueprints from Bundang-gu Office (`분당구청 건축과` / `세움터` / `정보공개포털`)
+Because the apartment management office (`관리사무소`) often claims not to have detailed MEP drawings, the homeowner can obtain the official **As-Built Blueprints (`준공 도면`)** directly from **`성남시 분당구청 건축과` (Bundang-gu Office Architecture Dept)** in person (with ID) or online via **`세움터` (`cloud.eais.go.kr`) / `정보공개포털` (`open.go.kr`)**:
 
-1. **① Electrical Lighting & Power Conduit Plan (`전등·전열 배관 평면도`):**
+1. **① Electrical Lighting, Power & Control Conduit Plan (`전기설비 — 전등·전열·약전 배관 평면도`):**
    - **What it proves:** Shows the exact cast-in-slab `CD관` plastic tube routes connecting the **Kitchen / Laundry Room (`주방/다용도실`)**, the **Hallway Switch/Control Wall (`복도 벽면`)**, and the **Living Room Ceiling Junction Box (`거실 천장 팔각박스`, `Exit #2`)**.
-2. **② Ventilation / Air-Filtration Control Wiring Plan (`환기설비 / 전열교환기 배관·배선 및 제어기 도면` — often under `기계설비` or `약전/제어 도면`):**
+2. **② Ventilation / Air-Filtration Control Wiring Plan (`기계설비 — 환기설비 / 전열교환기 배관·배선 및 제어기 도면`):**
    - **What it proves:** Shows on the official blueprint that the `CD관` tube pouring water into your wall (`Exit #1`) goes **directly to the Laundry Room Air-Filtration Unit (`다용도실 전열교환기`)** where `301호`'s concrete is wet!
-3. **③ Domestic Cold/Hot Water & Heating Piping Plan (`급수·급탕 및 난방 배관 평면도`):**
+3. **③ Domestic Cold/Hot Water & Heating Piping Plan (`기계설비 — 급수·급탕 및 난방 배관 평면도`):**
    - **What it proves:** Shows which pressurized pipes (`직수`, `온수`, `난방`) and manifolds pass through or next to the Laundry Room / Kitchen wall.
-4. **④ Sanitary Drainage & Pipe Shaft Plan (`오·배수 및 비트 평면도`):**
+4. **④ Sanitary Drainage & Pipe Shaft Plan (`기계설비 — 오·배수 및 비트 평면도`):**
    - **What it proves:** Shows the laundry floor drain routing and the exact location of the common vertical pipe shafts (`PD 비트`).
 
 > **Why Step 1 is a game-changer:** Once we lay the building's own `CD관` conduit diagram on the table showing a continuous plastic tube running from the **saturated Laundry Room** $\rightarrow$ **Hallway Wall Control Panel (`Exit #1`)** $\rightarrow$ **Living Room Ceiling Box (`Exit #2`)**, nobody can claim the living room ceiling drip is "unrelated" to the wet laundry room concrete!
