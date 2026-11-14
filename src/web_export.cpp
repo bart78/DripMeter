@@ -870,8 +870,9 @@ void WebExport::onRoot()
         "</header>"
         "<main>"
         "<div id='pause-banner' class='cal-banner' style='display:%s;margin-block-end:0.55rem;border-color:#f59e0b;background:rgba(245,158,11,0.12)'>"
-        "<span style='color:#fbbf24;font-size:0.8rem'><strong>Logging Paused</strong> — Live Scope stays active so you can reposition &amp; test the box without recording fake drops.</span>"
-        "<div style='display:flex;gap:0.4rem;flex-wrap:wrap'>"
+        "<span style='color:#fbbf24;font-size:0.8rem'><strong>Logging Paused</strong> — Drain tub / reposition box freely. Resuming logs a <code>#resume</code> marker in <code>/drops.csv</code> to normalize new placement strength.</span>"
+        "<div style='display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center'>"
+        "<input type='number' id='in-drain-ml' step='1' min='0' max='5000' placeholder='Drained mL (opt)' style='width:8.5rem;min-height:28px;padding:0.15rem 0.45rem;font-size:0.78rem;border-radius:5px;border:1px solid #263042;background:#0d1119;color:#edf2f7'>"
         "<button type='button' class='btn' id='btn-resume-banner' style='border-color:#22c55e;color:#4ade80'>Resume Logging</button>"
         "<button type='button' class='btn' id='btn-trim-5m'>Undo Last 5m</button>"
         "<button type='button' class='btn' id='btn-trim-15m'>Undo Last 15m</button>"
@@ -1451,8 +1452,13 @@ void WebExport::onRoot()
   // Pause Data Gathering (keeps Live Scope running while ignoring handling bumps)
   async function toggleLogPause(forceAction) {
     const act = forceAction || 'toggle';
-    await fetch(`/pause?action=${act}`);
+    const drainIn = document.getElementById('in-drain-ml');
+    const drainVal = (drainIn && drainIn.value) ? parseFloat(drainIn.value) : 0;
+    const qDrain = (drainVal > 0) ? `&drained_ml=${drainVal.toFixed(1)}` : '';
+    await fetch(`/pause?action=${act}${qDrain}`);
+    if (drainIn && (act === 'resume' || act === 'toggle')) drainIn.value = '';
     pollStatus();
+    if (patDrawer.open) refreshPatternAnalysis();
   }
   document.getElementById('btn-pause-log').addEventListener('click', () => toggleLogPause('toggle'));
   document.getElementById('btn-resume-banner').addEventListener('click', () => toggleLogPause('resume'));
@@ -1558,22 +1564,30 @@ void WebExport::onRoot()
         fetch('/events.csv').then(r => r.ok ? r.text() : '')
       ]);
       const drops = [];
+      let placementEpoch = 1;
       const refEnv = 22.0; // Full-strength detachment drop EnvPeak reference
       for (const raw of csvTxt.split('\n')) {
         const line = raw.trim();
-        if (!line || line.startsWith('#') || line.startsWith('ISO')) continue;
+        if (!line || line.startsWith('ISO')) continue;
+        if (line.startsWith('#resume') || line.startsWith('#pause')) {
+          if (drops.length > 0) placementEpoch++;
+          continue;
+        }
+        if (line.startsWith('#')) continue;
         const p = line.split(',');
         if (p.length < 3) continue;
         const ep = parseFloat(p[1]);
         if (!ep || ep < 1700000000) continue;
         const pk = parseInt(p[2], 10) || 0;
         const env = p.length > 3 ? (parseInt(p[3], 10) || 0) : 0;
+        // Filter known low-SNR continuous noise chatter (e.g. 2026-11-12 07:30..18:45 where EnvPeak < 17)
+        if (p[0] >= '2026-11-12T07:30' && p[0] <= '2026-11-12T18:45' && env < 17) continue;
         const rawVol = p.length > 4 ? (parseInt(p[4], 10) || 0) : 0;
 
         // Proportional energy volume scaling (smaller midday or tail drops -> smaller uL)
         const scale = env > 0 ? Math.min(1.50, Math.max(0.25, env / refEnv)) : 1.0;
         const volUl = rawVol > 0 ? rawVol : Math.round(curUld * scale);
-        drops.push({ iso: p[0], ep, pk, env, volUl });
+        drops.push({ iso: p[0], ep, pk, env, volUl, pEpoch: placementEpoch });
       }
 
       const nowEp = drops.length ? Math.max(Date.now() / 1000, drops[drops.length - 1].ep) : (Date.now() / 1000);
@@ -1587,19 +1601,19 @@ void WebExport::onRoot()
       for (let i = 0; i < drops.length; i++) {
         const d = drops[i];
         if (!rawClusters.length) {
-          rawClusters.push({ startIso: d.iso, startEp: d.ep, endEp: d.ep, drops: 1, strag: 0, volUl: d.volUl, envSum: d.env });
+          rawClusters.push({ startIso: d.iso, startEp: d.ep, endEp: d.ep, drops: 1, strag: 0, volUl: d.volUl, envSum: d.env, pEpoch: d.pEpoch });
           continue;
         }
         const prevB = rawClusters[rawClusters.length - 1];
         const dtPrev = d.ep - prevB.endEp;
         const dtNext = (i + 1 < drops.length) ? (drops[i + 1].ep - d.ep) : 9999;
-        if (dtPrev <= 60 || (dtPrev <= 180 && dtNext > 12 && prevB.drops >= 3)) {
+        if ((dtPrev <= 60 || (dtPrev <= 180 && dtNext > 12 && prevB.drops >= 3)) && d.pEpoch === prevB.pEpoch) {
           prevB.endEp = d.ep;
           prevB.drops++;
           prevB.volUl += d.volUl;
           prevB.envSum += d.env;
         } else {
-          rawClusters.push({ startIso: d.iso, startEp: d.ep, endEp: d.ep, drops: 1, strag: 0, volUl: d.volUl, envSum: d.env });
+          rawClusters.push({ startIso: d.iso, startEp: d.ep, endEp: d.ep, drops: 1, strag: 0, volUl: d.volUl, envSum: d.env, pEpoch: d.pEpoch });
         }
       }
 
@@ -1697,6 +1711,14 @@ void WebExport::onRoot()
       blRows += summarizeWindow('Weekend (Sat–Sun)', d => isWeekend(d.ep), obsWkndSec / 3600.0);
       document.getElementById('tb-baseline').innerHTML = blRows;
 
+      // Compute per-placement-epoch baseline EnvPeak for normalized strength comparison
+      const epochEnvSum = {}, epochEnvCnt = {};
+      for (const b of bursts) {
+        const epId = b.pEpoch || 1;
+        epochEnvSum[epId] = (epochEnvSum[epId] || 0) + (b.envSum / b.drops);
+        epochEnvCnt[epId] = (epochEnvCnt[epId] || 0) + 1;
+      }
+
       // Render recent bursts (newest first, up to 25)
       let bHtml = '';
       const startIdx = Math.max(0, bursts.length - 25);
@@ -1704,7 +1726,11 @@ void WebExport::onRoot()
         const b = bursts[i];
         const dur = Math.round(b.endEp - b.startEp);
         const gapMin = i > 0 ? ((b.startEp - bursts[i - 1].startEp) / 60.0).toFixed(1) + 'm' : '--';
-        const avgEnv = (b.envSum / b.drops).toFixed(1);
+        const rawAvgEnv = b.envSum / b.drops;
+        const epId = b.pEpoch || 1;
+        const epBase = epochEnvCnt[epId] ? (epochEnvSum[epId] / epochEnvCnt[epId]) : rawAvgEnv;
+        const normRatio = epBase > 0 ? (rawAvgEnv / epBase).toFixed(2) : '1.00';
+        const avgEnv = `${rawAvgEnv.toFixed(1)} <span style='color:#8b9bb4'>(${normRatio}x)</span>`;
         const dropLabel = b.strag > 0 ? `${b.drops} <span style='color:#8b9bb4'>(+${b.strag})</span>` : `${b.drops}`;
         bHtml += `<tr><th>#${i + 1}</th><td>${escHtml(b.startIso.slice(5, 19).replace('T', ' '))}</td><td>${dropLabel}</td><td>${(b.volUl / 1000).toFixed(2)} mL</td><td>${dur}s</td><td>${gapMin}</td><td>${avgEnv}</td></tr>`;
       }
@@ -2984,6 +3010,8 @@ void WebExport::onEventLog()
 void WebExport::onPause()
 {
     const String action = _server.arg("action");
+    const float drainedMl = _server.hasArg("drained_ml") ? _server.arg("drained_ml").toFloat() : 0.0f;
+    const bool wasPaused = _sampler.paused();
     uint32_t removed = 0;
 
     if (action == "pause")
@@ -3010,6 +3038,22 @@ void WebExport::onPause()
         struct tm tmv;
         if (TimeService::localTime(tmv))
             _log.rebuildToday(_histo, tmv, &_sampler);
+    }
+
+    if (_sampler.paused() != wasPaused)
+    {
+        _sampler.discardEvents();
+        _log.appendPauseMarker(_sampler.paused(), drainedMl);
+        if (!_sampler.paused() && drainedMl > 0.05f)
+        {
+            const int64_t nowUs = TimeService::epochUs();
+            const uint32_t nowEpoch = (uint32_t)(nowUs / 1000000LL);
+            char nowIso[48] = "1970-01-01T00:00:00";
+            TimeService::formatISO(nowUs, nowIso, sizeof(nowIso));
+            char noteBuf[32];
+            snprintf(noteBuf, sizeof(noteBuf), "%.1f mL", drainedMl);
+            appendEventCsvRow(nowIso, nowEpoch, nowEpoch, "Tub Drained & Replaced", noteBuf);
+        }
     }
 
     char out[128];

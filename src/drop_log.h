@@ -39,6 +39,11 @@ public:
                         uint16_t refr, uint16_t rel, uint16_t cap,
                         bool qtyEn = false, uint16_t uldTenths = DEFAULT_UL_TENTHS);
 
+    // Append a '#pause,...' or '#resume,...' marker line when the user pauses
+    // logging to drain/reposition the collection tub. Marks a new acoustic
+    // placement epoch so drop strength can be normalized per placement.
+    void appendPauseMarker(bool paused, float drainedMl = 0.0f);
+
     // Replay the log and rebuild the histogram + rolling volume metrics for
     // the given local date.
     uint32_t rebuildToday(Histogram &h, const struct tm &today,

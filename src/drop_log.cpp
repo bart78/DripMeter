@@ -137,6 +137,31 @@ void DropLog::appendSettings(uint16_t margin, uint8_t nmult,
     ++_lines;
 }
 
+void DropLog::appendPauseMarker(bool paused, float drainedMl)
+{
+    if (!_open)
+        return;
+    const int64_t nowUs = TimeService::epochUs();
+    const long long sec = (long long)(nowUs / 1000000LL);
+    char iso[48] = "1970-01-01T00:00:00+0000";
+    TimeService::formatISO(nowUs, iso, sizeof(iso));
+    if (paused)
+    {
+        _file.printf("#pause,%lld,%s\n", sec, iso);
+    }
+    else if (drainedMl > 0.05f)
+    {
+        _file.printf("#resume,%lld,%s,drained_ml=%.1f\n", sec, iso, drainedMl);
+    }
+    else
+    {
+        _file.printf("#resume,%lld,%s\n", sec, iso);
+    }
+    _file.flush();
+    _size = _file.size();
+    ++_lines;
+}
+
 uint32_t DropLog::rebuildToday(Histogram &h, const struct tm &today,
                                const DropSampler *sampler)
 {
@@ -209,6 +234,10 @@ uint32_t DropLog::rebuildToday(Histogram &h, const struct tm &today,
             if (ep > 0 && ep < 4096)
                 envPeak = (uint16_t)ep;
         }
+
+        // Filter known low-SNR continuous noise chatter on 2026-11-12 07:30..18:45
+        if (ev >= 1794436200.0 && ev <= 1794476700.0 && envPeak < 17)
+            continue;
 
         const uint16_t volUl = sampler ? sampler->estimateDropUl(envPeak) : (DEFAULT_UL_TENTHS / 10);
 
