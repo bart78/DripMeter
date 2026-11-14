@@ -16,20 +16,24 @@ Since spring 2026 (over 7 months, through spring, summer, and autumn), water has
 ### B. How Water Travels From the Laundry/Kitchen Side to the Living Room Ceiling: The Two Through-Slab Penetration Points (`CD전선관` + `먹박스 관통구`)
 A natural question is: *"If the wet concrete is in the laundry room / kitchen area, why is water dripping in the middle of the living room ceiling?"*
 
-Our close-up photo (`data/20261114_205404.jpg`) solved this completely:
+Our close-up photo (`data/20261114_205404.jpg`) and the official **`먹박스` (`먹줄병 / 오야박스`) construction manual** (`https://cafe.daum.net/manmulnara/6Woc/9`) solved this completely:
 - The black circle in the living room ceiling is a **`먹박스` (`먹줄슬리브 + 먹줄덮개`)**—a special plastic sleeve nailed to the wooden formwork during the 2009 construction so surveyors could shoot vertical laser/plumb lines **straight through the `210 mm` concrete slab** from the 2nd floor (`201호`) up to the 3rd floor (`301호`). The grey `먹줄슬리브` ring has two built-in nailing tabs on its left and right edges, and the black `먹줄덮개` cap snaps into the bottom with a tiny circular molding mark in the center—matching the ceiling photo 100%.
-- Once construction finished in 2009, that through-slab hole was plugged with mortar and capped at the bottom with the black plastic `먹줄덮개`.
+- As shown in the construction manual:
+  1. When the yellow plastic cone (`먹줄병`) is pulled out after pouring the concrete slab, it leaves a **wide-open vertical hole (`먹줄구멍`) looking straight through the `210 mm` slab** from `301호` down into `201호`.
+  2. Once surveying (`먹매김`) is finished, a worker pushes the thin round plastic cap (`먹줄덮개`) down into the bottom inner lip of the sleeve from above (`301호` side) with no waterproof gasket or sealant, and shovels mortar (`몰탈/콘크리트`) into the hole on top of the plastic cap.
+  3. Viewed from the ceiling underneath (`"사. 덮개를 사용한 후의 슬리브 밑사진"`), this leaves the outer grey `먹줄슬리브` ring (with its side nailing tabs) and the inner circular `먹줄덮개` cap with an unsealed circular seam between them—identical to `data/20261114_205404.jpg`.
 - **Why this connects the Laundry Room leak to the Living Room ceiling:**
   - A solid `210 mm` reinforced concrete slab is waterproof everywhere else. When water leaks in `301호` (around the **saturated Laundry Room / Kitchen area**), it gets underneath `301호`'s styrofoam floor insulation (`층간소음 완충재 하부`) and spreads out as a thin layer of water on top of the structural concrete slab.
   - That water can **only** escape downward into `201호` where a pre-existing hole penetrates the concrete slab:
     1. **Penetration #1 (Hallway Wall `Exit #1`):** Water enters the hollow **`CD관` electrical conduit** connecting the Laundry Room Air-Filtration unit (`전열교환기`) to the hallway wall control panel and pours out into the wall bottle.
-    2. **Penetration #2 (Living Room Ceiling `Exit #2`):** Water spreading under `301호`'s styrofoam floor reaches the top of the **`먹박스` (`먹줄구멍` through-slab surveying hole)** in the living room, seeps straight down through the `210 mm` sleeve around the mortar plug, collects behind the black plastic cap (`먹줄덮개`), and weeps out of the rim onto the adjacent formwork nail tip!
+    2. **Penetration #2 (Living Room Ceiling `Exit #2`):** Water spreading under `301호`'s styrofoam floor reaches the top of the **`먹박스` (`먹줄구멍` through-slab surveying hole)** in the living room, seeps straight down between the smooth plastic sleeve wall and the shrunk post-pour mortar plug, collects on top of the loose plastic cap (`먹줄덮개`), and weeps out of the circular rim onto the adjacent formwork nail tip!
 
 ```mermaid
 flowchart LR
-    A["Saturated Concrete in 301호<br/>(Laundry Room / Kitchen Side)<br/>+ Wet Sponge Layer Under Floor"] --> B["Hollow Electrical Conduits (CD관)<br/>Cast inside the concrete slab<br/>Acts like a hidden horizontal pipe"]
-    B --> C["Exit #1: Hallway Wall Box<br/>(Laundry Air-Filtration Control Panel Wire)<br/>Water pours directly out of the CD관 tube!"]
-    B --> D["Exit #2: Living Room Ceiling Box (팔각박스)<br/>Fills 0.725 mL lip -> overflows ~15 drops<br/>every 11–15 minutes into DripMeter"]
+    A["Saturated Concrete in 301호<br/>(Laundry Room / Kitchen Side)<br/>+ Water Layer Under 301호 Styrofoam Floor"] --> B1["Penetration #1: Hollow Electrical Conduit (CD관)<br/>From Laundry Air-Filtration Unit to Hallway Wall"]
+    A --> B2["Penetration #2: Through-Slab Survey Hole (먹박스)<br/>Mortar-plugged plastic sleeve through 210mm slab"]
+    B1 --> C["Exit #1: Hallway Wall Box<br/>(Laundry Air-Filtration Control Panel Wire)<br/>Water pours directly out of the CD관 tube!"]
+    B2 --> D["Exit #2: Living Room Ceiling 먹박스 Cap<br/>Fills 0.725 mL lip -> overflows ~15 drops<br/>every 11–15 minutes into DripMeter"]
 ```
 
 ---
@@ -40,7 +44,7 @@ To replace guesswork with numbers, we placed an automated drop counter (`DripMet
 
 ### Fact #1: Why the Ceiling Drips in "Bursts" Every 11–15 Minutes (The "`0.725 mL` Tipping Bucket")
 - Water does **not** drip randomly, and there is **no machine turning on every 12 minutes**.
-- Water slowly creeps along the ceiling electrical conduit and hangs on the metal lip of the ceiling junction box by surface tension until a tiny **`0.725 mL` puddle (~15 drops)** collects.
+- Water slowly seeps down the `먹박스` sleeve and collects inside the circular rim of the `먹줄덮개` cap (and along the wet concrete path to the formwork nail) by surface tension until a tiny **`0.725 mL` puddle (~15 drops)** accumulates.
 - Once that puddle reaches **`0.725 mL`**, surface tension breaks and the entire `0.725 mL` drains out in a **90-second burst of ~15 drops** (like a tipping bucket), then stops for **11 to 15 minutes** while the next `0.725 mL` refills.
 - **Physical Proof (`±1%` accuracy):**
   - **`Nov 11–12` (24.0 hours):** `119` bursts recorded = **`85 mL`** measured (**`0.714 mL / burst`**).
