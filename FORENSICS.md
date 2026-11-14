@@ -11,16 +11,19 @@
 Since spring 2026 (over 7 months, through spring, summer, and autumn), water has been showing up in three linked places:
 1. **Known Wet Area Upstairs (`301호` Laundry / Utility Room `다용도실 / 세탁실`):** The concrete floor around the laundry room on the side of the kitchen in `301호` has been reported to look **visibly saturated and wet**. That laundry room also houses the apartment's **whole-house air filtration / ventilation unit (`전열교환기 / 세대 환기유니트`)** connected to the outside.
 2. **Exit #1 in `201호` — Hallway / Kitchen Wall (`주방 옆 복도 벽면`):** Directly on the wall outside the kitchen/laundry area, water is pouring out of a **white ribbed plastic electrical conduit (`CD 전선관`)** into a catch bottle. **Crucially, this exact conduit carries the control wire for the Laundry Room Air Filtration System (`환기시스템 벽면 조절기`)!**
-3. **Exit #2 in `201호` — Living Room Ceiling (`거실 천장`):** A few meters away in the living room (in front of the TV wall), water drips out of a **round metal electrical junction box (`팔각 아웃렛 박스`)** cast into the bottom of the concrete ceiling slab.
+3. **Exit #2 in `201호` — Living Room Ceiling (`거실 천장`):** A few meters away in the living room (in front of the TV wall), water drips out around a **black & grey round plastic sleeve (`먹박스 / 먹줄슬리브 + 먹줄덮개`)**—a vertical surveyor's plumb-line sleeve that goes **straight through the `210 mm` concrete ceiling slab** from `301호`'s floor deck!
 
-### B. How Water Travels From the Laundry/Kitchen Side to the Living Room Ceiling: The "Electrical Tube Highway" (`CD전선관 통로`)
+### B. How Water Travels From the Laundry/Kitchen Side to the Living Room Ceiling: The Two Through-Slab Penetration Points (`CD전선관` + `먹박스 관통구`)
 A natural question is: *"If the wet concrete is in the laundry room / kitchen area, why is water dripping in the middle of the living room ceiling?"*
 
-- There are **no water pipes** cast inside the structural concrete ceiling slab in the middle of the living room.
-- Instead, when the building was poured (~2009), electricians laid **hollow corrugated plastic tubes (`CD 전선관`)** directly inside the concrete slab to run wires between the **Laundry Room air-filtration unit (`전열교환기`)**, the **hallway wall control panel (`환기 조절기`)**, the **electrical panel (`분전함`)**, and the **living room ceiling light boxes (`팔각박스`)**.
-- When water saturates the concrete slab under `301호`'s floor insulation (`층간소음 완충재 하부`) around the laundry room / kitchen, it enters these hollow plastic `CD관` electrical tubes (or runs along their outer ribs) like a hidden underground gutter and exits at the lowest points:
-  1. Down the **air-filtration control wire tube** into the hallway wall (`Exit #1`).
-  2. Across the ceiling slab conduit into the **living room ceiling junction box** (`Exit #2`).
+Our close-up photo (`data/20261114_205404.jpg`) solved this completely:
+- The black circle in the living room ceiling is a **`먹박스` (`먹줄슬리브 + 먹줄덮개`)**—a special plastic sleeve nailed to the wooden formwork during the 2009 construction so surveyors could shoot vertical laser/plumb lines **straight through the `210 mm` concrete slab** from the 2nd floor (`201호`) up to the 3rd floor (`301호`). The grey `먹줄슬리브` ring has two built-in nailing tabs on its left and right edges, and the black `먹줄덮개` cap snaps into the bottom with a tiny circular molding mark in the center—matching the ceiling photo 100%.
+- Once construction finished in 2009, that through-slab hole was plugged with mortar and capped at the bottom with the black plastic `먹줄덮개`.
+- **Why this connects the Laundry Room leak to the Living Room ceiling:**
+  - A solid `210 mm` reinforced concrete slab is waterproof everywhere else. When water leaks in `301호` (around the **saturated Laundry Room / Kitchen area**), it gets underneath `301호`'s styrofoam floor insulation (`층간소음 완충재 하부`) and spreads out as a thin layer of water on top of the structural concrete slab.
+  - That water can **only** escape downward into `201호` where a pre-existing hole penetrates the concrete slab:
+    1. **Penetration #1 (Hallway Wall `Exit #1`):** Water enters the hollow **`CD관` electrical conduit** connecting the Laundry Room Air-Filtration unit (`전열교환기`) to the hallway wall control panel and pours out into the wall bottle.
+    2. **Penetration #2 (Living Room Ceiling `Exit #2`):** Water spreading under `301호`'s styrofoam floor reaches the top of the **`먹박스` (`먹줄구멍` through-slab surveying hole)** in the living room, seeps straight down through the `210 mm` sleeve around the mortar plug, collects behind the black plastic cap (`먹줄덮개`), and weeps out of the rim onto the adjacent formwork nail tip!
 
 ```mermaid
 flowchart LR
